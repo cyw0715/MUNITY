@@ -1,0 +1,15 @@
+[Unit]
+Description=MUNITY OS Backend
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/mun-os/backend
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

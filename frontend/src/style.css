@@ -1,0 +1,77 @@
+:root {
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #f0f2f5;
+}
+
+/* 全局宽松样式 */
+.el-card {
+  margin-bottom: 20px !important;
+}
+
+.el-card__header {
+  padding: 18px 24px !important;
+}
+
+.el-card__body {
+  padding: 24px !important;
+}
+
+.el-form-item {
+  margin-bottom: 24px !important;
+}
+
+.el-table {
+  margin: 12px 0;
+}
+
+.el-table th {
+  padding: 14px 0 !important;
+}
+
+.el-table td {
+  padding: 16px 0 !important;
+}
+
+.el-dialog__body {
+  padding: 24px !important;
+}
+
+.el-menu-item {
+  height: 50px !important;
+  line-height: 50px !important;
+  margin: 4px 0;
+}
+
+.el-header {
+  height: 60px !important;
+}
+
+.el-main {
+  padding: 24px !important;
+}
+
+.el-divider {
+  margin: 12px 0 !important;
+}
+
+.el-tabs__header {
+  margin-bottom: 20px !important;
+}
+
+.el-tabs__item {
+  padding: 0 24px !important;
+  height: 50px !important;
+  line-height: 50px !important;
+}
