@@ -16,6 +16,10 @@
             <el-icon><List /></el-icon>
             <span>议程单</span>
           </el-menu-item>
+          <el-menu-item index="/delegate/async-messages">
+            <el-icon><Message /></el-icon>
+            <span>非对称消息</span>
+          </el-menu-item>
           <el-divider style="margin: 8px 0; border-color: #4a5568" />
           <el-menu-item index="/delegate/updates" :class="{ 'has-notification': notifications.updates }" @click="clearNotification('updates')">
             <el-icon><Bell /></el-icon>
@@ -70,7 +74,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
-import { HomeFilled, Edit, Bell, Folder, ArrowDown, FullScreen, Aim, Back, List } from '@element-plus/icons-vue'
+import { HomeFilled, Edit, Bell, Folder, ArrowDown, FullScreen, Aim, Back, List, Message } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import { useNotification } from '../../composables/useNotification'

@@ -34,6 +34,10 @@
             <el-icon><Select /></el-icon>
             <span>投票表决</span>
           </el-menu-item>
+          <el-menu-item index="/staff/async-messages">
+            <el-icon><Message /></el-icon>
+            <span>非对称消息</span>
+          </el-menu-item>
           <el-menu-item index="/staff/directives" :class="{ 'has-notification': notifications.directives }" @click="clearNotification('directives')">
             <el-icon><Document /></el-icon>
             <span>指令管理</span>
@@ -105,7 +109,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
-import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select } from '@element-plus/icons-vue'
+import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import { useNotification } from '../../composables/useNotification'

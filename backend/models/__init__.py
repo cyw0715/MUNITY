@@ -10,10 +10,11 @@ from models.speech_record import SpeechRecord
 from models.roll_call import RollCall
 from models.timeline import Timeline
 from models.vote import Vote, VoteRecord
+from models.async_message import AsyncMessage
 
 __all__ = [
     "User", "Committee", "Delegation", "AgendaItem",
     "Motion", "SpeakerEntry", "Directive", "Document",
     "Update", "SpeechRecord", "RollCall", "Timeline",
-    "Vote", "VoteRecord"
+    "Vote", "VoteRecord", "AsyncMessage"
 ]

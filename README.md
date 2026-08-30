@@ -6,8 +6,8 @@
 
 ### 三级用户角色
 - **管理员 (Admin)** - 管理学团账号、委员会配置
-- **学团 (Staff)** - 会议控制、文件管理、投票表决
-- **代表 (Delegate)** - 提交指令/文件、查看议程、接收更新
+- **学团 (Staff)** - 会议控制、文件管理、投票表决、非对称消息管理
+- **代表 (Delegate)** - 提交指令/文件、查看议程、接收更新、非对称消息收发
 
 ### 核心模块
 - 📋 **议程管理** - 多层级议程设置与激活
@@ -17,6 +17,8 @@
 - 📄 **指令管理** - 代表提交指令，学团审核处理
 - 📁 **文件管理** - 文件提交、发布、撤回
 - 📢 **局势更新** - 学团发布更新，支持文件附件
+- 🕊️ **非对称消息** - 危机联动核心功能，支持公开/代表团/私密三级消息
+- 🔔 **WebSocket 实时推送** - 新消息即时通知，无需手动刷新
 - ⏱️ **时间线** - 会议时间模拟
 - 💾 **存档/恢复** - 会议状态保存与恢复
 
@@ -24,6 +26,7 @@
 - **后端**: FastAPI + SQLAlchemy + SQLite
 - **前端**: Vue 3 + Element Plus + Pinia
 - **认证**: JWT + bcrypt
+- **实时通信**: WebSocket
 
 ## 快速开始
 
@@ -36,8 +39,8 @@
 
 1. 克隆项目
 ```bash
-git clone https://github.com/YOUR_USERNAME/mun-os.git
-cd mun-os
+git clone https://github.com/cyw0715/MUNITY.git
+cd MUNITY
 ```
 
 2. 安装后端依赖
@@ -77,9 +80,9 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 mun-os/
 ├── backend/
-│   ├── models/          # 数据模型
-│   ├── routers/         # API 路由
-│   ├── services/        # 认证服务
+│   ├── models/          # 数据模型（含非对称消息）
+│   ├── routers/         # API 路由（含非对称消息 + WebSocket）
+│   ├── services/        # 认证服务 + WebSocket 管理器
 │   ├── utils/           # 工具函数
 │   ├── main.py          # 应用入口
 │   ├── database.py      # 数据库配置
@@ -87,65 +90,36 @@ mun-os/
 │   └── auto_save.py     # 自动保存
 ├── frontend/
 │   ├── src/
-│   │   ├── views/       # 页面组件
+│   │   ├── views/       # 页面组件（含非对称消息页面）
 │   │   ├── components/  # 公共组件
 │   │   ├── stores/      # 状态管理
 │   │   ├── router/      # 路由配置
+│   │   ├── composables/ # 组合式函数（含 WebSocket 连接管理）
 │   │   └── api/         # API 封装
 │   └── dist/            # 构建输出
+├── deploy/              # 部署配置
+├── LICENSE              # PolyForm Shield License 1.0.0
 └── README.md
 ```
 
-## 部署
+## 非对称消息系统
 
-### 本地开发
-```bash
-# 后端 (热重载)
-cd backend
-python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+非对称消息是危机联动模拟的核心功能，支持三种可见性级别：
 
-# 前端 (开发服务器)
-cd frontend
-npm run dev
-```
+| 可见性 | 说明 |
+|--------|------|
+| **公开 (public)** | 委员会内所有代表可见 |
+| **代表团 (delegation)** | 仅指定代表团的成员可见 |
+| **私密 (private)** | 仅指定代表可见 |
 
-### 生产部署
-```bash
-# 构建前端
-cd frontend
-npm run build
-
-# 启动后端 (会自动服务前端静态文件)
-cd ../backend
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-### Docker 部署 (可选)
-```dockerfile
-# TODO: 添加 Dockerfile
-```
-
-## 配置说明
-
-### 环境变量
-在 `backend/config.py` 中配置:
-- `SECRET_KEY` - JWT 密钥
-- `DATABASE_URL` - 数据库连接
-- `DEFAULT_ADMIN_USERNAME` - 默认管理员用户名
-- `DEFAULT_ADMIN_PASSWORD` - 默认管理员密码
-
-### 委员会功能开关
-管理员可以为每个委员会启用/禁用以下功能:
-- 议程管理
-- 指令管理
-- 局势更新
-- 时间线
+学团可发布、撤回非对称消息。代表收到消息后会通过 WebSocket 实时推送通知，无需手动刷新页面。
 
 ## API 文档
 
 启动服务后访问:
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
+- WebSocket: `ws://localhost:8000/api/ws/{user_id}`
 
 ## 贡献指南
 
@@ -157,8 +131,10 @@ python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 
 ## 许可证
 
-MIT License
+PolyForm Shield License 1.0.0 — 详见 [LICENSE](./LICENSE)
+
+本许可证允许个人、学习、研究等非竞争性使用。不得使用本软件提供与本项目竞争的产品或服务。具体条款见许可证全文。
 
 ## 联系方式
 
-- 项目链接: https://github.com/YOUR_USERNAME/mun-os
+- 项目链接: https://github.com/cyw0715/MUNITY

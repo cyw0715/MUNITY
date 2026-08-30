@@ -33,6 +33,7 @@ const routes = [
       { path: 'rollcall', name: 'StaffRollCall', component: () => import('../views/staff/RollCall.vue') },
       { path: 'meeting', name: 'StaffMeeting', component: () => import('../views/staff/Meeting.vue') },
       { path: 'vote', name: 'StaffVote', component: () => import('../views/staff/Vote.vue') },
+      { path: 'async-messages', name: 'StaffAsyncMessages', component: () => import('../views/staff/AsyncMessages.vue') },
       { path: 'directives', name: 'StaffDirectives', component: () => import('../views/staff/Directives.vue') },
       { path: 'documents', name: 'StaffDocuments', component: () => import('../views/staff/Documents.vue') },
       { path: 'updates', name: 'StaffUpdates', component: () => import('../views/staff/Updates.vue') },
@@ -50,6 +51,7 @@ const routes = [
     children: [
       { path: '', name: 'DelegateHome', component: () => import('../views/delegate/Home.vue') },
       { path: 'submit', name: 'DelegateSubmit', component: () => import('../views/delegate/Submit.vue') },
+      { path: 'async-messages', name: 'DelegateAsyncMessages', component: () => import('../views/delegate/AsyncMessages.vue') },
       { path: 'agenda', name: 'DelegateAgenda', component: () => import('../views/delegate/Agenda.vue') },
       { path: 'updates', name: 'DelegateUpdates', component: () => import('../views/delegate/Updates.vue') },
       { path: 'meeting-files', name: 'DelegateMeetingFiles', component: () => import('../views/delegate/MeetingFiles.vue') }

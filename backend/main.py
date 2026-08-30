@@ -7,6 +7,7 @@ from models import User, Committee
 from services import hash_password
 from routers import auth_router, admin_router, staff_router, delegate_router
 from routers.vote import router as vote_router
+from routers.async_message import router as async_message_router
 from config import DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASSWORD
 from auto_save import auto_saver
 import os
@@ -31,6 +32,7 @@ app.include_router(admin_router)
 app.include_router(staff_router)
 app.include_router(delegate_router)
 app.include_router(vote_router)
+app.include_router(async_message_router)
 
 
 @app.on_event("startup")
