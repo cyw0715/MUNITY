@@ -202,4 +202,8 @@ onMounted(loadData)
   justify-content: space-between;
   align-items: center;
 }
+
+.el-table {
+  border-radius: 10px;
+}
 </style>

@@ -175,6 +175,25 @@ html, body, #app {
 .el-tag {
   border-radius: 4px !important;
   font-weight: 500 !important;
+  border: none !important;
+}
+
+/* Alert */
+.el-alert {
+  border-radius: var(--radius-sm) !important;
+  border: none !important;
+}
+
+/* Checkbox (feature selection) */
+.el-checkbox.is-bordered {
+  border-radius: var(--radius-sm) !important;
+  border-color: #e2e8f0 !important;
+  padding: 8px 14px !important;
+  transition: all var(--transition-fast) !important;
+}
+.el-checkbox.is-bordered.is-checked {
+  border-color: var(--brand-primary) !important;
+  background: #edf3fb !important;
 }
 
 /* Divider */

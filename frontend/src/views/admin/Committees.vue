@@ -197,13 +197,15 @@ onMounted(loadCommittees)
   align-items: center;
 }
 
+.el-table {
+  border-radius: 10px;
+}
+
 .features-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px 20px;
-  justify-content: center;
-  padding: 16px 0;
-  line-height: 2;
+  gap: 12px;
+  padding: 4px 0;
 }
 
 .feature-item {
