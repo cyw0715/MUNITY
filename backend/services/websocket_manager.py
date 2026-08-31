@@ -15,14 +15,17 @@ class WebSocketManager:
         # { user_id: set of committee_ids }
         self.user_committees: Dict[int, set[int]] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: int, committee_id: int = None):
+    async def connect(self, websocket: WebSocket, user_id: int, committee_id: int = None, committee_ids: list[int] = None):
         await websocket.accept()
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
-        if committee_id is not None:
-            if user_id not in self.user_committees:
-                self.user_committees[user_id] = set()
+        if user_id not in self.user_committees:
+            self.user_committees[user_id] = set()
+        if committee_ids:
+            for cid in committee_ids:
+                self.user_committees[user_id].add(cid)
+        elif committee_id is not None:
             self.user_committees[user_id].add(committee_id)
         logger.info(f"WebSocket 用户 {user_id} 已连接 (共 {self._total_connections()} 个连接)")
 

@@ -136,20 +136,32 @@ def msg_to_dict(msg: AsyncMessage, db: Session) -> dict:
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
-    """WebSocket 连接端点"""
-    committee_id = None
+    """WebSocket 连接端点（支持多委员会学团）"""
+    committee_ids = None
     from database import SessionLocal
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            committee_id = user.committee_id
+            # 优先从 staff_committees 表获取
+            from sqlalchemy import text
+            from database import engine
+            with engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT committee_id FROM staff_committees WHERE staff_id = :sid"),
+                    {"sid": user.id}
+                )
+                cids = [row[0] for row in result]
+            if cids:
+                committee_ids = cids
+            else:
+                committee_ids = [user.committee_id] if user.committee_id else None
     except Exception:
         pass
     finally:
         db.close()
 
-    await ws_manager.connect(websocket, user_id, committee_id)
+    await ws_manager.connect(websocket, user_id, committee_ids=committee_ids)
     try:
         while True:
             data = await websocket.receive_text()

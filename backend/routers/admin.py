@@ -42,6 +42,16 @@ def create_staff(
     db.add(staff)
     db.commit()
     db.refresh(staff)
+
+    # 同时写入 staff_committees 关联表（如果指定了委员会）
+    if user_data.committee_id:
+        from sqlalchemy import text
+        from database import engine
+        ins = text("INSERT OR IGNORE INTO staff_committees (staff_id, committee_id) VALUES (:sid, :cid)")
+        with engine.connect() as conn:
+            conn.execute(ins, {"sid": staff.id, "cid": user_data.committee_id})
+            conn.commit()
+
     return staff
 
 
@@ -168,6 +178,13 @@ def delete_committee(
 
     # 取消学团与委员会的关联
     db.query(User).filter(User.role == "staff", User.committee_id == committee_id).update({"committee_id": None})
+
+    # 清理 staff_committees 关联表
+    from sqlalchemy import text
+    from database import engine
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM staff_committees WHERE committee_id = :cid"), {"cid": committee_id})
+        conn.commit()
 
     # 删除时间线
     db.query(Timeline).filter(Timeline.committee_id == committee_id).delete()
