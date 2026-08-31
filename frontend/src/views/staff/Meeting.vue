@@ -172,11 +172,16 @@
     <el-dialog v-model="motionDialogVisible" title="新建动议" width="520px" class="motion-dialog">
       <el-form :model="motionForm" label-position="top">
         <el-form-item label="动议类型">
-          <el-select v-model="motionForm.type" style="width: 100%">
-            <el-option label="有主持核心磋商" value="moderated_caucus" />
-            <el-option label="自由辩论" value="unmoderated_caucus" />
-            <el-option label="自由磋商" value="free_caucus" />
-            <el-option label="轮席发言" value="speakers_list" />
+          <el-select v-model="motionForm.type" style="width: 100%" @change="onMotionTypeChange">
+            <el-option-group label="内置类型">
+              <el-option label="有主持核心磋商" value="moderated_caucus" />
+              <el-option label="自由辩论" value="unmoderated_caucus" />
+              <el-option label="自由磋商" value="free_caucus" />
+              <el-option label="轮席发言" value="speakers_list" />
+            </el-option-group>
+            <el-option-group v-if="customMotionTypes.length" label="自定义类型">
+              <el-option v-for="mt in customMotionTypes" :key="mt.name" :label="mt.name" :value="mt.name" />
+            </el-option-group>
           </el-select>
         </el-form-item>
         <el-form-item label="主题">
@@ -190,18 +195,23 @@
             <el-option v-for="m in filteredProposers" :key="m.id" :label="m.seat + (m.is_leader ? ' (阁首)' : '')" :value="m.id" />
           </el-select>
         </el-form-item>
-        <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="单位时长（秒）">
-              <el-input-number v-model="motionForm.unit_duration" :min="10" :step="10" :max="600" controls-position="right" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="总时长（秒）">
-              <el-input-number v-model="motionForm.total_duration" :min="30" :step="30" :max="7200" controls-position="right" style="width: 100%" />
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <template v-if="motionTypeNeedsUnitDuration">
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="单位时长（秒）">
+                <el-input-number v-model="motionForm.unit_duration" :min="10" :step="10" :max="600" controls-position="right" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="总时长（秒）">
+                <el-input-number v-model="motionForm.total_duration" :min="30" :step="30" :max="7200" controls-position="right" style="width: 100%" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
+        <el-alert v-else type="info" :closable="false" show-icon style="margin-top: 8px">
+          <template #default>此动议类型不包含时长设置</template>
+        </el-alert>
       </el-form>
       <template #footer>
         <el-button @click="motionDialogVisible = false">取消</el-button>
@@ -258,8 +268,40 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { VideoPlay, VideoPause, CircleClose, Plus, Close, Edit, Microphone } from '@element-plus/icons-vue'
 import { useMeetingStore } from '../../stores/meeting'
+import api from '../../api'
 
 const store = useMeetingStore()
+const customMotionTypes = ref([])
+
+// 从 committee 接口加载自定义动议类型
+async function loadCustomMotionTypes() {
+  try {
+    const { data } = await api.get('/api/staff/committee')
+    customMotionTypes.value = data.motion_types || []
+  } catch (e) {}
+}
+
+// 查找当前选中类型的配置
+const currentMotionTypeConfig = computed(() => {
+  const t = motionForm.value.type
+  // 内置类型 — 默认全部需要
+  const builtins = ['moderated_caucus', 'unmoderated_caucus', 'free_caucus', 'speakers_list']
+  if (builtins.includes(t)) return { need_speakers_list: true, need_unit_duration: true, need_total_duration: true }
+  return customMotionTypes.value.find(m => m.name === t)
+})
+
+// 根据类型配置动态显示/隐藏时长字段
+const motionTypeNeedsUnitDuration = computed(() => {
+  return currentMotionTypeConfig.value?.need_unit_duration ?? true
+})
+
+function onMotionTypeChange(newType) {
+  const config = customMotionTypes.value.find(m => m.name === newType)
+  if (config) {
+    if (config.default_unit_duration) motionForm.value.unit_duration = config.default_unit_duration
+    if (config.default_total_duration) motionForm.value.total_duration = config.default_total_duration
+  }
+}
 
 // 对话框状态
 const motionDialogVisible = ref(false)
@@ -319,7 +361,7 @@ async function showMotionDialog() {
   motionForm.value = { type: 'moderated_caucus', topic: '', unit_duration: 60, total_duration: 300 }
   motionProposerDelegation.value = null
   motionProposerDelegate.value = null
-  await store.loadDelegates()
+  await Promise.all([store.loadDelegates(), loadCustomMotionTypes()])
   motionDialogVisible.value = true
 }
 

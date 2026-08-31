@@ -459,13 +459,30 @@ def get_committee_info(current_user: User = Depends(require_role("staff")), db: 
     return {
         "id": committee.id,
         "name": committee.name,
-        "features": committee.features or []
+        "features": committee.features or [],
+        "motion_types": committee.motion_types or []
     }
 
 
-# ==================== 点名 ====================
+@router.put("/motion-types")
+def update_motion_types(
+    data: dict,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """更新委员会的动议类型配置"""
+    committee_id = get_staff_committee(current_user)
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
+    if not committee:
+        raise HTTPException(status_code=404, detail="委员会不存在")
+    
+    motion_types = data.get("motion_types", [])
+    committee.motion_types = motion_types
+    db.commit()
+    return {"motion_types": committee.motion_types}
 
-@router.get("/rollcall")
+
+# ==================== 点名 ====================
 def get_rollcall(current_user: User = Depends(require_role("staff")), db: Session = Depends(get_db)):
     """获取当前委员会的点名状态（按代表统计，显示席位）"""
     committee_id = get_staff_committee(current_user)

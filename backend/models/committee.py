@@ -10,6 +10,7 @@ class Committee(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     features = Column(JSON, default=list)  # 可用功能列表
+    motion_types = Column(JSON, default=list)  # 自定义动议类型列表
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # 关系

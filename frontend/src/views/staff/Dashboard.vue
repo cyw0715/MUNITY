@@ -45,6 +45,10 @@
           <el-icon><Select /></el-icon>
           <span>投票表决</span>
         </el-menu-item>
+        <el-menu-item index="/staff/motion-types">
+          <el-icon><Setting /></el-icon>
+          <span>动议类型</span>
+        </el-menu-item>
 
         <!-- 非对称消息 — 新菜单项 -->
         <el-menu-item index="/staff/async-messages" class="menu-highlight">
@@ -153,7 +157,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
-import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message, Edit, SwitchButton, OfficeBuilding, Check } from '@element-plus/icons-vue'
+import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message, Edit, SwitchButton, OfficeBuilding, Check, Setting } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import { useNotification } from '../../composables/useNotification'
