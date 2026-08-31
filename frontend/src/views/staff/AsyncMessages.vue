@@ -103,7 +103,7 @@
                 </span>
                 <span class="msg-target">
                   <el-icon><ArrowRight /></el-icon>
-                  {{ item.receiver_delegation_name || item.receiver_name || '所有人' }}
+                  {{ formatRecipients(item) }}
                 </span>
                 <span class="msg-time">{{ formatTime(item.created_at) }}</span>
               </div>
@@ -150,8 +150,8 @@
           </div>
         </div>
 
-        <el-form-item v-if="form.visibility === 'private'" label="选择接收代表">
-          <el-select v-model="form.receiver_id" filterable placeholder="搜索代表姓名或席位..." style="width: 100%">
+        <el-form-item v-if="form.visibility === 'private'" label="选择接收代表（可多选）">
+          <el-select v-model="form.receiver_ids" multiple filterable collapse-tags placeholder="搜索代表姓名或席位..." style="width: 100%">
             <el-option-group v-for="d in delegations" :key="d.id" :label="d.name">
               <el-option
                 v-for="m in getDelegationMembers(d.id)"
@@ -162,8 +162,8 @@
             </el-option-group>
           </el-select>
         </el-form-item>
-        <el-form-item v-if="form.visibility === 'delegation'" label="选择接收代表团">
-          <el-select v-model="form.receiver_delegation_id" filterable placeholder="选择代表团..." style="width: 100%">
+        <el-form-item v-if="form.visibility === 'delegation'" label="选择接收代表团（可多选）">
+          <el-select v-model="form.receiver_delegation_ids" multiple filterable collapse-tags placeholder="选择代表团..." style="width: 100%">
             <el-option v-for="d in delegations" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
@@ -199,16 +199,16 @@
     >
       <div v-if="detailItem" class="detail-content">
         <div class="detail-header-bar">
-          <el-tag :type="visibilityTagType(detailItem.visibility)" effect="dark" size="small">
-            {{ visibilityLabel(detailItem.visibility) }}
-          </el-tag>
-          <span class="detail-sender">{{ detailItem.sender_name }}</span>
-          <span class="detail-time">{{ formatTime(detailItem.created_at) }}</span>
-        </div>
-        <div v-if="detailItem.receiver_delegation_name || detailItem.receiver_name" class="detail-recipient">
-          <el-icon><ArrowRight /></el-icon>
-          接收: {{ detailItem.receiver_delegation_name || detailItem.receiver_name }}
-        </div>
+        <el-tag :type="visibilityTagType(detailItem.visibility)" effect="dark" size="small">
+          {{ visibilityLabel(detailItem.visibility) }}
+        </el-tag>
+        <span class="detail-sender">{{ detailItem.sender_name }}</span>
+        <span class="detail-time">{{ formatTime(detailItem.created_at) }}</span>
+      </div>
+      <div v-if="detailItem && (detailItem.receiver_names?.length || detailItem.receiver_delegation_names?.length)" class="detail-recipient">
+        <el-icon><ArrowRight /></el-icon>
+        接收: {{ formatRecipients(detailItem) }}
+      </div>
         <el-divider />
         <div class="detail-body">{{ detailItem.content || '（无内容）' }}</div>
       </div>
@@ -236,8 +236,8 @@ const detailItem = ref(null)
 
 const form = ref({
   visibility: 'public',
-  receiver_id: null,
-  receiver_delegation_id: null,
+  receiver_ids: [],
+  receiver_delegation_ids: [],
   title: '',
   content: ''
 })
@@ -278,6 +278,20 @@ function formatTime(t) {
   return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function formatRecipients(item) {
+  const parts = []
+  if (item.receiver_delegation_names?.length) {
+    parts.push(...item.receiver_delegation_names)
+  }
+  if (item.receiver_names?.length) {
+    parts.push(...item.receiver_names)
+  }
+  if (item.visibility === 'public') {
+    return '所有人'
+  }
+  return parts.join(', ') || '所有人'
+}
+
 function truncate(text, len) {
   if (!text) return ''
   return text.length > len ? text.substring(0, len) + '...' : text
@@ -291,14 +305,23 @@ async function loadData() {
   loading.value = true
   try {
     const params = activeTab.value !== 'all' ? { visibility: activeTab.value } : {}
-    const [mRes, dRes, delRes] = await Promise.all([
+    const [mRes, availRes] = await Promise.all([
       api.get('/api/staff/async-messages', { params }),
-      api.get('/api/staff/delegations'),
-      api.get('/api/staff/delegates')
+      api.get('/api/staff/available-delegates').catch(() => null)
     ])
     messages.value = mRes.data
-    delegations.value = dRes.data
-    allDelegates.value = delRes.data
+    if (availRes?.data) {
+      delegations.value = availRes.data.delegations || []
+      allDelegates.value = availRes.data.delegates || []
+    } else {
+      // fallback
+      const [dRes, delRes] = await Promise.all([
+        api.get('/api/staff/delegations'),
+        api.get('/api/staff/delegates')
+      ])
+      delegations.value = dRes.data
+      allDelegates.value = delRes.data
+    }
   } catch (e) {
     ElMessage.error('加载数据失败')
   } finally {
@@ -307,7 +330,7 @@ async function loadData() {
 }
 
 function showCreateDialog() {
-  form.value = { visibility: 'public', receiver_id: null, receiver_delegation_id: null, title: '', content: '' }
+  form.value = { visibility: 'public', receiver_ids: [], receiver_delegation_ids: [], title: '', content: '' }
   createDialogVisible.value = true
 }
 
@@ -319,13 +342,15 @@ function showDetail(item) {
 async function handleCreate() {
   if (!form.value.title?.trim()) { ElMessage.warning('请输入消息标题'); return }
   if (!form.value.content?.trim()) { ElMessage.warning('请输入消息内容'); return }
-  if (form.value.visibility === 'private' && !form.value.receiver_id) { ElMessage.warning('请选择接收代表'); return }
-  if (form.value.visibility === 'delegation' && !form.value.receiver_delegation_id) { ElMessage.warning('请选择接收代表团'); return }
+  if (form.value.visibility === 'private' && (!form.value.receiver_ids || form.value.receiver_ids.length === 0)) { ElMessage.warning('请至少选择一个接收代表'); return }
+  if (form.value.visibility === 'delegation' && (!form.value.receiver_delegation_ids || form.value.receiver_delegation_ids.length === 0)) { ElMessage.warning('请至少选择一个接收代表团'); return }
 
   createLoading.value = true
   try {
     await api.post('/api/staff/async-messages', {
-      ...form.value,
+      visibility: form.value.visibility,
+      receiver_ids: form.value.receiver_ids || [],
+      receiver_delegation_ids: form.value.receiver_delegation_ids || [],
       title: form.value.title.trim(),
       content: form.value.content.trim()
     })
@@ -355,14 +380,20 @@ async function handleDelete(item) {
 }
 
 let wsCleanup = null
+let ws2Cleanup = null
 onMounted(() => {
   loadData()
   const ws = useWebSocket()
   const handler = () => loadData()
-  ws.on('*', handler)
-  wsCleanup = () => ws.off('*', handler)
+  ws.on('new_async_message', handler)
+  wsCleanup = () => ws.off('new_async_message', handler)
+  // 也监听通配符
+  ws2Cleanup = () => {}
 })
-onUnmounted(() => { if (wsCleanup) wsCleanup() })
+onUnmounted(() => {
+  if (wsCleanup) wsCleanup()
+  if (ws2Cleanup) ws2Cleanup()
+})
 </script>
 
 <style scoped>

@@ -180,6 +180,82 @@ def delete_committee(
 
 # ==================== 分配学团到委员会 ====================
 
+class StaffCommitteeAssign(BaseModel):
+    committee_ids: List[int]  # 可分配多个委员会
+
+
+@router.put("/staff/{staff_id}/assign-committees")
+def assign_staff_to_committees(
+    staff_id: int,
+    data: StaffCommitteeAssign,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """为学团分配多个委员会"""
+    staff = db.query(User).filter(User.id == staff_id, User.role == "staff").first()
+    if not staff:
+        raise HTTPException(status_code=404, detail="学团不存在")
+    
+    # 验证所有委员会存在
+    committees = db.query(Committee).filter(Committee.id.in_(data.committee_ids)).all()
+    found_ids = {c.id for c in committees}
+    for cid in data.committee_ids:
+        if cid not in found_ids:
+            raise HTTPException(status_code=404, detail=f"委员会不存在 (id={cid})")
+    
+    # 先清空旧关联
+    from sqlalchemy import text
+    from database import engine
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM staff_committees WHERE staff_id = :sid"), {"sid": staff_id})
+        conn.commit()
+    
+    # 插入新关联
+    if data.committee_ids:
+        from database import SessionLocal
+        for cid in data.committee_ids:
+            ins = text("INSERT OR IGNORE INTO staff_committees (staff_id, committee_id) VALUES (:sid, :cid)")
+            with engine.connect() as conn:
+                conn.execute(ins, {"sid": staff_id, "cid": cid})
+                conn.commit()
+    
+    # 也更新 committee_id 字段为第一个委员会（兼容旧版）
+    staff.committee_id = data.committee_ids[0] if data.committee_ids else None
+    db.commit()
+    return {"message": "分配成功", "committee_ids": data.committee_ids}
+
+
+@router.get("/staff/{staff_id}/committees")
+def get_staff_committees(
+    staff_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """获取学团的委员会列表"""
+    from sqlalchemy import text
+    from database import engine
+    
+    committees = []
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT c.id, c.name FROM committees c "
+                 "JOIN staff_committees sc ON c.id = sc.committee_id "
+                 "WHERE sc.staff_id = :sid"),
+            {"sid": staff_id}
+        )
+        committees = [{"id": row[0], "name": row[1]} for row in result]
+    
+    # 兼容旧版
+    if not committees:
+        staff = db.query(User).filter(User.id == staff_id).first()
+        if staff and staff.committee_id:
+            c = db.query(Committee).filter(Committee.id == staff.committee_id).first()
+            if c:
+                committees = [{"id": c.id, "name": c.name}]
+    
+    return committees
+
+
 @router.put("/staff/{staff_id}/assign/{committee_id}")
 def assign_staff_to_committee(
     staff_id: int,
@@ -187,12 +263,21 @@ def assign_staff_to_committee(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
+    """单委员会分配（兼容旧版，保留已有关联）"""
     staff = db.query(User).filter(User.id == staff_id, User.role == "staff").first()
     if not staff:
         raise HTTPException(status_code=404, detail="学团不存在")
     committee = db.query(Committee).filter(Committee.id == committee_id).first()
     if not committee:
         raise HTTPException(status_code=404, detail="委员会不存在")
+    
+    from sqlalchemy import text
+    from database import engine
+    ins = text("INSERT OR IGNORE INTO staff_committees (staff_id, committee_id) VALUES (:sid, :cid)")
+    with engine.connect() as conn:
+        conn.execute(ins, {"sid": staff_id, "cid": committee_id})
+        conn.commit()
+    
     staff.committee_id = committee_id
     db.commit()
     return {"message": "分配成功"}

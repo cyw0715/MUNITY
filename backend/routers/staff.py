@@ -34,7 +34,26 @@ class DelegateCreate(BaseModel):
 
 
 def get_staff_committee(current_user: User) -> int:
-    """获取学团所属委员会ID"""
+    """获取学团的主委员会ID（支持多委员会）"""
+    from sqlalchemy import text
+    from database import engine
+    
+    # 优先从 staff_committees 表获取
+    cids = []
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT committee_id FROM staff_committees WHERE staff_id = :sid"),
+            {"sid": current_user.id}
+        )
+        cids = [row[0] for row in result]
+    
+    if cids:
+        # 优先使用 primary committee_id
+        if current_user.committee_id and current_user.committee_id in cids:
+            return current_user.committee_id
+        return cids[0]
+    
+    # 降级到旧字段
     if not current_user.committee_id:
         raise HTTPException(status_code=400, detail="您尚未分配到任何委员会")
     return current_user.committee_id
