@@ -38,7 +38,18 @@ def get_staff_committee(current_user: User) -> int:
     from sqlalchemy import text
     from database import engine
     
-    # 优先从 staff_committees 表获取
+    # 优先使用用户当前选中的 committee_id
+    if current_user.committee_id:
+        # 验证该委员会确实属于该学团
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT committee_id FROM staff_committees WHERE staff_id = :sid AND committee_id = :cid"),
+                {"sid": current_user.id, "cid": current_user.committee_id}
+            )
+            if result.first():
+                return current_user.committee_id
+    
+    # 从 staff_committees 表获取第一个
     cids = []
     with engine.connect() as conn:
         result = conn.execute(
@@ -48,9 +59,6 @@ def get_staff_committee(current_user: User) -> int:
         cids = [row[0] for row in result]
     
     if cids:
-        # 优先使用 primary committee_id
-        if current_user.committee_id and current_user.committee_id in cids:
-            return current_user.committee_id
         return cids[0]
     
     # 降级到旧字段
@@ -1582,4 +1590,45 @@ def update_timeline(
         "days_per_hour": timeline.hours_per_day,
         "current_date": current_date.isoformat(),
         "last_updated": timeline.last_updated.isoformat()
+    }
+
+
+# ==================== 学团切换会场 ====================
+
+class SwitchCommitteeRequest(BaseModel):
+    committee_id: int
+
+
+@router.post("/switch-committee")
+def switch_committee(
+    data: SwitchCommitteeRequest,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """学团切换当前工作会场"""
+    from sqlalchemy import text
+    from database import engine
+    
+    # 验证该委员会属于该学团
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT 1 FROM staff_committees WHERE staff_id = :sid AND committee_id = :cid"),
+            {"sid": current_user.id, "cid": data.committee_id}
+        )
+        if not result.first():
+            raise HTTPException(status_code=403, detail="您无权访问此委员会")
+    
+    committee = db.query(Committee).filter(Committee.id == data.committee_id).first()
+    if not committee:
+        raise HTTPException(status_code=404, detail="委员会不存在")
+    
+    # 更新用户的当前委员会
+    current_user.committee_id = data.committee_id
+    db.commit()
+    
+    return {
+        "message": f"已切换到委员会: {committee.name}",
+        "committee_id": committee.id,
+        "committee_name": committee.name,
+        "features": committee.features or []
     }

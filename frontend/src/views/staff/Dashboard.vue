@@ -91,7 +91,27 @@
             <el-breadcrumb-item :to="{ path: '/staff' }">学团控制台</el-breadcrumb-item>
             <el-breadcrumb-item v-if="currentPage">{{ currentPage }}</el-breadcrumb-item>
           </el-breadcrumb>
-          <span class="committee-badge">{{ committeeName }}</span>
+          <!-- 会场切换 -->
+          <el-dropdown v-if="committees.length > 0" @command="handleSwitchCommittee" trigger="click" class="committee-switcher">
+            <span class="committee-badge">
+              <el-icon style="margin-right: 4px; vertical-align: middle"><OfficeBuilding /></el-icon>
+              {{ activeCommitteeName }}
+              <el-icon style="margin-left: 2px; font-size: 12px"><ArrowDown /></el-icon>
+            </span>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  v-for="c in committees"
+                  :key="c.id"
+                  :command="c.id"
+                  :class="{ 'is-selected': c.id === activeCommitteeId }"
+                >
+                  <el-icon v-if="c.id === activeCommitteeId" style="color: var(--brand-primary)"><Check /></el-icon>
+                  <span :style="c.id !== activeCommitteeId ? 'padding-left: 22px' : ''">{{ c.name }}</span>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
         <div class="topbar-right">
           <el-tooltip :content="isFullscreen ? '退出全屏' : '全屏'" placement="bottom">
@@ -133,15 +153,19 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
-import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message, Edit, SwitchButton } from '@element-plus/icons-vue'
+import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message, Edit, SwitchButton, OfficeBuilding, Check } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import { useNotification } from '../../composables/useNotification'
+import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const committeeName = ref('')
+const activeCommitteeId = ref(null)
+const activeCommitteeName = ref('')
+const committees = ref([])
 const committeeFeatures = ref([])
 const isFullscreen = ref(false)
 const changePasswordRef = ref(null)
@@ -196,12 +220,47 @@ onMounted(async () => {
     isFullscreen.value = !!document.fullscreenElement
   })
   try {
-    const { data } = await api.get('/api/staff/committee')
-    committeeName.value = data.name
-    committeeFeatures.value = data.features || []
+    // 并行获取委员会列表和当前委员会信息
+    const [committeeRes, myCommitteesRes] = await Promise.all([
+      api.get('/api/staff/committee').catch(() => ({ data: null })),
+      api.get('/api/staff/my-committees')
+    ])
+    if (committeeRes.data) {
+      activeCommitteeId.value = committeeRes.data.id
+      activeCommitteeName.value = committeeRes.data.name
+      committeeFeatures.value = committeeRes.data.features || []
+    }
+    const allCommittees = myCommitteesRes.data || []
+    committees.value = allCommittees
+
+    // 从 my-committees 中匹配当前会场名称（如果 committee 接口返回了名称则优先）
+    if (!activeCommitteeName.value && allCommittees.length > 0) {
+      activeCommitteeId.value = allCommittees[0].id
+      activeCommitteeName.value = allCommittees[0].name
+    }
   } catch (e) {}
   startPolling()
 })
+
+async function handleSwitchCommittee(committeeId) {
+  try {
+    const { data } = await api.post('/api/staff/switch-committee', { committee_id: committeeId })
+    activeCommitteeId.value = data.committee_id
+    activeCommitteeName.value = data.committee_name
+    committeeFeatures.value = data.features || []
+
+    // 强制刷新当前页面（标题栏、功能标签等需要重新加载）
+    const currentPath = route.path
+    if (currentPath === '/staff') {
+      // 首页 - 使用 router 的 replace 触发重新挂载
+      const { data: cData } = await api.get('/api/staff/committee')
+      // 只是更新首页组件的数据（组件自己会重新请求）
+    }
+    window.location.reload()
+  } catch (err) {
+    ElMessage.error(err.response?.data?.detail || '切换失败')
+  }
+}
 
 onUnmounted(() => {
   stopPolling()
@@ -341,6 +400,18 @@ onUnmounted(() => {
   border-radius: 12px;
   font-weight: 600;
   white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+}
+.committee-badge:hover {
+  background: #dce8f9;
+}
+.committee-switcher :deep(.el-dropdown-menu__item.is-selected) {
+  background: #edf3fb;
+  color: var(--brand-primary);
+  font-weight: 600;
 }
 .topbar-right {
   display: flex;
