@@ -10,6 +10,7 @@ from routers.vote import router as vote_router
 from routers.async_message import router as async_message_router
 from config import DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASSWORD
 from auto_save import auto_saver
+from monitor import monitor
 import os
 
 # 创建数据库表
@@ -38,6 +39,9 @@ app.include_router(async_message_router)
 @app.on_event("startup")
 def on_startup():
     """启动时初始化"""
+    # 启动服务器监控
+    monitor.start()
+
     # 尝试恢复上次状态
     auto_saver.restore_state()
 
@@ -64,6 +68,7 @@ def on_startup():
 @app.on_event("shutdown")
 def on_shutdown():
     """关闭时保存状态"""
+    monitor.stop()
     auto_saver.stop()
     auto_saver._save_state()
     print("[AutoSave] 关闭前状态已保存")
@@ -83,6 +88,38 @@ def system_status():
         "auto_save_enabled": True,
         "save_interval": 30,
         "last_save": last_save
+    }
+
+
+@app.get("/api/system/monitor")
+def server_monitor(scope: str = "current"):
+    """服务器资源监控接口
+    
+    scope=current 返回当前指标
+    scope=1m 返回最近1分钟 + 当前
+    scope=24h 返回最近24小时历史 + 当前
+    """
+    from fastapi.responses import JSONResponse
+    
+    current = monitor.get_current()
+    
+    if scope == "current":
+        return {"current": current}
+    
+    history = monitor.get_history(minutes=1 if scope == "1m" else 1440)
+    
+    # 格式化历史数据为图表友好格式
+    cpu_data = []
+    mem_data = []
+    for h in history:
+        t = int(h["timestamp"]) * 1000  # JS毫秒时间戳
+        cpu_data.append([t, h["cpu_percent"]])
+        mem_data.append([t, h["mem_percent"]])
+    
+    return {
+        "current": current,
+        "cpu": cpu_data,
+        "mem": mem_data,
     }
 
 
