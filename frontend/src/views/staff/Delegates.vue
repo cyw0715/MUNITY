@@ -16,7 +16,6 @@
       </template>
 
       <el-table :data="delegates" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="username" label="账号" width="120" />
         <el-table-column label="席位" min-width="120">
           <template #default="{ row }">

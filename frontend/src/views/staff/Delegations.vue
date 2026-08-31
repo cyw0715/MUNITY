@@ -12,7 +12,6 @@
       </template>
 
       <el-table :data="delegations" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="代表团名称" />
         <el-table-column label="代表人数" width="120">
           <template #default="{ row }">
