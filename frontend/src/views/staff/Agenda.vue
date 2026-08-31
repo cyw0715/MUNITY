@@ -39,16 +39,20 @@
     </el-card>
 
     <!-- 添加议程对话框 -->
-    <el-dialog v-model="addDialogVisible" title="添加议程" width="400px">
+    <el-dialog v-model="addDialogVisible" title="添加议程" width="450px">
       <el-form :model="addForm" :rules="addRules" ref="addFormRef">
         <el-form-item label="议程标题" prop="title">
-          <el-input v-model="addForm.title" />
+          <el-input v-model="addForm.title" placeholder="如：一般性辩论、议题讨论" />
         </el-form-item>
-        <el-form-item label="层级" prop="level">
-          <el-input-number v-model="addForm.level" :min="1" :max="10" />
+        <el-form-item label="父级议程">
+          <el-select v-model="addForm.parent_id" placeholder="顶级议程（不选）" clearable style="width: 100%">
+            <el-option label="顶级议程" :value="null" />
+            <el-option v-for="item in flatAgendaItems" :key="item.id" :label="getIndentedLabel(item)" :value="item.id" :disabled="item.level >= 5" />
+          </el-select>
+          <div class="form-help">选择一个父议程作为子项，或不选作为顶级议程</div>
         </el-form-item>
-        <el-form-item label="排序" prop="order">
-          <el-input-number v-model="addForm.order" :min="0" />
+        <el-form-item v-if="addForm.parent_id" label="层级">
+          <el-input :model-value="'子议程（L' + computedLevel + '）'" disabled />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -114,7 +118,7 @@ const importLoading = ref(false)
 const importText = ref('')
 const parsedItems = ref([])
 
-const addForm = ref({ title: '', level: 1, order: 0 })
+const addForm = ref({ title: '', parent_id: null })
 const addRules = {
   title: [{ required: true, message: '请输入议程标题', trigger: 'blur' }]
 }
@@ -122,6 +126,39 @@ const addRules = {
 function getLevelType(level) {
   const types = ['', 'success', 'warning', 'danger', 'info']
   return types[(level - 1) % types.length] || ''
+}
+
+// 扁平化议程列表（用于父级选择器）
+const flatAgendaItems = computed(() => {
+  const result = []
+  function flatten(items, depth = 0) {
+    for (const item of items) {
+      result.push(item)
+      if (item.children?.length) {
+        flatten(item.children, depth + 1)
+      }
+    }
+  }
+  flatten(agendaItems.value)
+  return result
+})
+
+// 根据父议程计算层级
+const computedLevel = computed(() => {
+  if (!addForm.value.parent_id) return 1
+  const parent = flatAgendaItems.value.find(i => i.id === addForm.value.parent_id)
+  return parent ? Math.min(parent.level + 1, 5) : 1
+})
+
+// 带缩进的标签显示
+function getIndentedLabel(item) {
+  const indent = '　'.repeat(item.level - 1)
+  return indent + item.title
+}
+
+// 获取下一个排序号（追加到末尾）
+function getNextOrder() {
+  return flatAgendaItems.value.length
 }
 
 async function loadAgenda() {
@@ -168,7 +205,7 @@ function buildTree(items) {
 }
 
 function showAddDialog() {
-  addForm.value = { title: '', level: 1, order: agendaItems.value.length }
+  addForm.value = { title: '', parent_id: null }
   addDialogVisible.value = true
 }
 
@@ -268,7 +305,13 @@ async function handleAdd() {
   await addFormRef.value.validate()
   addLoading.value = true
   try {
-    await api.post('/api/staff/agenda', addForm.value)
+    const level = computedLevel.value
+    const order = getNextOrder()
+    await api.post('/api/staff/agenda', {
+      title: addForm.value.title,
+      level: level,
+      order: order
+    })
     ElMessage.success('添加成功')
     addDialogVisible.value = false
     loadAgenda()
@@ -309,6 +352,12 @@ onMounted(loadAgenda)
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.form-help {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 .import-hint {
   margin-bottom: 16px;
