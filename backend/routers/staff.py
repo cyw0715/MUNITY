@@ -520,6 +520,21 @@ def create_motion(
     db.add(motion)
     db.commit()
     db.refresh(motion)
+
+    # WebSocket 广播：动议变更
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        asyncio.run(
+            ws_manager.broadcast_committee(committee_id, {
+                "type": "motion_changed",
+                "action": "created",
+                "motion_id": motion.id
+            })
+        )
+    except Exception:
+        pass
+
     return {
         "id": motion.id,
         "committee_id": motion.committee_id,
@@ -550,6 +565,20 @@ def update_motion_status(
         raise HTTPException(status_code=404, detail="动议不存在")
     motion.status = status
     db.commit()
+
+    # WebSocket 广播
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+            "type": "motion_changed",
+            "action": "status_updated",
+            "motion_id": motion_id,
+            "status": status
+        }))
+    except Exception:
+        pass
+
     return {"message": "更新成功"}
 
 
@@ -638,6 +667,19 @@ def add_speaker(
     db.add(speaker)
     db.commit()
     db.refresh(speaker)
+
+    # WebSocket 广播
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+            "type": "speakers_updated",
+            "motion_id": motion_id,
+            "action": "added"
+        }))
+    except Exception:
+        pass
+
     return {"message": "添加成功", "id": speaker.id}
 
 
@@ -657,6 +699,20 @@ def remove_speaker(
         raise HTTPException(status_code=404, detail="发言者不存在")
     db.delete(speaker)
     db.commit()
+
+    # WebSocket 广播
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        committee_id = get_staff_committee(current_user)
+        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+            "type": "speakers_updated",
+            "motion_id": motion_id,
+            "action": "removed"
+        }))
+    except Exception:
+        pass
+
     return {"message": "移除成功"}
 
 

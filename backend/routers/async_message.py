@@ -87,11 +87,23 @@ def msg_to_dict(msg: AsyncMessage, db: Session) -> dict:
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
-    """WebSocket 连接端点（简化版，生产环境应加强鉴权）"""
-    await ws_manager.connect(websocket, user_id)
+    """WebSocket 连接端点"""
+    # 获取用户所属委员会
+    committee_id = None
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            committee_id = user.committee_id
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+    await ws_manager.connect(websocket, user_id, committee_id)
     try:
         while True:
-            # 保持连接活跃，接收心跳
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")

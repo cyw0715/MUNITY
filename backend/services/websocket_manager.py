@@ -82,6 +82,16 @@ class WebSocketManager:
             if committee_id in committees:
                 await self.send_to_user(uid, message)
 
+    async def send_to_committee_members(self, committee_id: int, message: dict, db_session=None):
+        """向指定委员会的所有用户广播（通过数据库查询，不依赖 WS 注册的 committee）"""
+        if db_session:
+            from models.user import User
+            members = db_session.query(User).filter(
+                User.committee_id == committee_id
+            ).all()
+            for m in members:
+                await self.send_to_user(m.id, message)
+
     async def broadcast(self, message: dict):
         """向所有在线用户广播"""
         for uid in list(self.active_connections.keys()):
