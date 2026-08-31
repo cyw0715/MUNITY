@@ -22,7 +22,7 @@
       </div>
       <div v-if="store.activeMotion" class="status-item motion-status">
         <span class="status-label">当前动议</span>
-        <span class="status-value">{{ motionTypeLabels[store.activeMotion.type] }}</span>
+        <span class="status-value">{{ getMotionTypeLabel(store.activeMotion.type) }}</span>
         <span v-if="store.activeMotion.topic" class="status-topic">{{ store.activeMotion.topic }}</span>
         <el-button type="danger" size="small" plain @click="handleEndMotion">结束动议</el-button>
       </div>
@@ -153,7 +153,7 @@
           <div class="motion-detail-body">
             <div class="detail-row">
               <span class="detail-key">类型</span>
-              <el-tag size="small" effect="plain">{{ motionTypeLabels[store.activeMotion.type] }}</el-tag>
+              <el-tag size="small" effect="plain">{{ getMotionTypeLabel(store.activeMotion.type) }}</el-tag>
             </div>
             <div v-if="store.activeMotion.topic" class="detail-row">
               <span class="detail-key">主题</span>
@@ -318,6 +318,14 @@ const selectedDelegationId = ref(null)
 const selectedDelegateId = ref(null)
 
 const motionTypeLabels = { moderated_caucus: '有主持核心磋商', unmoderated_caucus: '自由辩论', free_caucus: '自由磋商', speakers_list: '轮席发言' }
+
+// 获取动议类型显示名称（支持自定义类型）
+function getMotionTypeLabel(type) {
+  if (motionTypeLabels[type]) return motionTypeLabels[type]
+  // 查自定义类型
+  const found = customMotionTypes.value.find(m => m.name === type)
+  return found ? found.name : type
+}
 
 const levelTags = ['success', 'warning', 'danger', 'info', '']
 
