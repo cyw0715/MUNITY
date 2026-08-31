@@ -72,12 +72,22 @@ class WebSocketManager:
         """向指定委员会的所有学团成员发送消息"""
         if db_session:
             from models.user import User
-            staff = db_session.query(User).filter(
+            from sqlalchemy import text
+            # 通过 staff_committees 关联表查询多委员会学团
+            with db_session.bind.connect() as conn:
+                result = conn.execute(
+                    text("SELECT staff_id FROM staff_committees WHERE committee_id = :cid"),
+                    {"cid": committee_id}
+                )
+                staff_ids = [row[0] for row in result]
+            # 也兼容旧 committee_id 字段
+            old_staff = db_session.query(User).filter(
                 User.committee_id == committee_id,
                 User.role.in_(["staff", "admin"])
             ).all()
-            for s in staff:
-                await self.send_to_user(s.id, message)
+            all_ids = set(staff_ids) | {s.id for s in old_staff}
+            for sid in all_ids:
+                await self.send_to_user(sid, message)
 
     async def broadcast_committee(self, committee_id: int, message: dict):
         """向指定委员会的所有在线用户广播"""
@@ -89,11 +99,21 @@ class WebSocketManager:
         """向指定委员会的所有用户广播（通过数据库查询，不依赖 WS 注册的 committee）"""
         if db_session:
             from models.user import User
-            members = db_session.query(User).filter(
+            from sqlalchemy import text
+            # 查 staff_committees 关联表
+            with db_session.bind.connect() as conn:
+                result = conn.execute(
+                    text("SELECT staff_id FROM staff_committees WHERE committee_id = :cid"),
+                    {"cid": committee_id}
+                )
+                staff_ids = [row[0] for row in result]
+            # 查旧 committee_id 字段
+            old_members = db_session.query(User).filter(
                 User.committee_id == committee_id
             ).all()
-            for m in members:
-                await self.send_to_user(m.id, message)
+            all_ids = set(staff_ids) | {m.id for m in old_members}
+            for mid in all_ids:
+                await self.send_to_user(mid, message)
 
     async def broadcast(self, message: dict):
         """向所有在线用户广播"""
