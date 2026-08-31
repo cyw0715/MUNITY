@@ -1,140 +1,225 @@
 <template>
-  <el-card>
-    <template #header>
-      <div class="card-header">
-        <span>非对称消息（危机联动）</span>
-        <el-button type="primary" @click="showCreateDialog">发送消息</el-button>
+  <div class="async-messages-page animate-fade-in">
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <div>
+        <h2>非对称消息</h2>
+        <p>危机联动核心通信系统 — 支持公开、代表团和私密消息</p>
       </div>
-    </template>
-
-    <!-- 标签页：收件/发件/全部 -->
-    <el-tabs v-model="activeTab" @tab-change="loadData">
-      <el-tab-pane label="全部消息" name="all" />
-      <el-tab-pane label="公开消息" name="public" />
-      <el-tab-pane label="代表团消息" name="delegation" />
-      <el-tab-pane label="私密消息" name="private" />
-    </el-tabs>
-
-    <div v-if="loading" style="text-align: center; padding: 40px">
-      <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-      <p style="color: #909399; margin-top: 8px">加载中...</p>
+      <el-button type="primary" size="large" @click="showCreateDialog">
+        <el-icon><Plus /></el-icon>发送消息
+      </el-button>
     </div>
 
-    <div v-else-if="filteredMessages.length">
-      <div
-        v-for="item in filteredMessages"
-        :key="item.id"
-        class="message-item"
-        :class="{ 'unread': !item.is_read && item.visibility !== 'public' }"
-      >
-        <div class="message-header">
-          <div class="message-tags">
-            <el-tag
-              :type="visibilityType(item.visibility)"
-              size="small"
-              effect="dark"
-            >
-              {{ visibilityLabel(item.visibility) }}
-            </el-tag>
-            <el-tag v-if="item.sender_name" type="info" size="small" effect="plain">
-              {{ item.sender_name }}
-            </el-tag>
-          </div>
-          <div class="message-actions">
-            <span class="message-time">{{ formatTime(item.created_at) }}</span>
-            <el-button type="danger" link size="small" @click="handleDelete(item)">撤回</el-button>
-          </div>
+    <!-- 统计卡片 -->
+    <div class="stat-cards">
+      <div class="stat-card-item">
+        <div class="stat-icon" style="background: #eef2ff; color: #1a73e8;">
+          <el-icon :size="20"><Message /></el-icon>
         </div>
-        <div class="message-title" @click="showDetail(item)">{{ item.title }}</div>
-        <div class="message-meta">
-          <template v-if="item.receiver_delegation_name">
-            发送至：<strong>{{ item.receiver_delegation_name }}</strong>
-          </template>
-          <template v-else-if="item.receiver_name">
-            发送至：<strong>{{ item.receiver_name }}</strong>
-          </template>
-          <template v-else>
-            发送至：<strong>所有人</strong>
-          </template>
+        <div class="stat-info">
+          <span class="stat-num">{{ messages.length }}</span>
+          <span class="stat-desc">总消息</span>
+        </div>
+      </div>
+      <div class="stat-card-item">
+        <div class="stat-icon" style="background: #f0fdf4; color: #16a34a;">
+          <el-icon :size="20"><Select /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-num">{{ messages.filter(m => m.visibility === 'public').length }}</span>
+          <span class="stat-desc">公开</span>
+        </div>
+      </div>
+      <div class="stat-card-item">
+        <div class="stat-icon" style="background: #fffbeb; color: #d97706;">
+          <el-icon :size="20"><Avatar /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-num">{{ messages.filter(m => m.visibility === 'delegation').length }}</span>
+          <span class="stat-desc">代表团</span>
+        </div>
+      </div>
+      <div class="stat-card-item">
+        <div class="stat-icon" style="background: #fef2f2; color: #dc2626;">
+          <el-icon :size="20"><Lock /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-num">{{ messages.filter(m => m.visibility === 'private').length }}</span>
+          <span class="stat-desc">私密</span>
         </div>
       </div>
     </div>
-    <el-empty v-else description="暂无非对称消息" />
-  </el-card>
 
-  <!-- 发送消息对话框 -->
-  <el-dialog v-model="createDialogVisible" title="发送非对称消息" width="650px">
-    <el-form :model="form" label-position="top">
-      <el-form-item label="可见性" required>
-        <el-radio-group v-model="form.visibility">
-          <el-radio value="private">私密（指定代表）</el-radio>
-          <el-radio value="delegation">代表团（指定代表团）</el-radio>
-          <el-radio value="public">公开（所有人可见）</el-radio>
-        </el-radio-group>
-      </el-form-item>
+    <!-- 消息列表卡片 -->
+    <div class="msg-card">
+      <!-- 标签页 -->
+      <div class="msg-tabs">
+        <button
+          v-for="tab in tabs"
+          :key="tab.key"
+          :class="['tab-btn', { active: activeTab === tab.key }]"
+          @click="activeTab = tab.key"
+        >
+          {{ tab.label }}
+          <span v-if="tab.count !== undefined" class="tab-count">{{ tab.count }}</span>
+        </button>
+      </div>
 
-      <el-form-item v-if="form.visibility === 'private'" label="接收代表" required>
-        <el-select v-model="form.receiver_id" filterable placeholder="选择接收代表" style="width: 100%">
-          <el-option-group
-            v-for="d in delegations"
-            :key="d.id"
-            :label="d.name"
+      <!-- 加载状态 -->
+      <div v-if="loading" class="loading-state">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        <span>加载中...</span>
+      </div>
+
+      <!-- 空状态 -->
+      <div v-else-if="!filteredMessages.length" class="empty-state">
+        <div class="empty-icon">
+          <el-icon :size="48"><ChatDotSquare /></el-icon>
+        </div>
+        <h3>暂无非对称消息</h3>
+        <p>点击右上角"发送消息"创建第一条</p>
+      </div>
+
+      <!-- 消息列表 -->
+      <div v-else class="msg-list">
+        <transition-group name="list">
+          <div
+            v-for="item in filteredMessages"
+            :key="item.id"
+            class="msg-item"
+            :class="{ 'is-unread': !item.is_read && item.visibility !== 'public' }"
           >
-            <el-option
-              v-for="m in getDelegationMembers(d.id)"
-              :key="m.id"
-              :label="m.seat + (m.is_leader ? ' (阁首)' : '')"
-              :value="m.id"
-            />
-          </el-option-group>
-        </el-select>
-      </el-form-item>
-
-      <el-form-item v-if="form.visibility === 'delegation'" label="接收代表团" required>
-        <el-select v-model="form.receiver_delegation_id" filterable placeholder="选择代表团" style="width: 100%">
-          <el-option
-            v-for="d in delegations"
-            :key="d.id"
-            :label="d.name"
-            :value="d.id"
-          />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="标题" required>
-        <el-input v-model="form.title" placeholder="消息标题" />
-      </el-form-item>
-      <el-form-item label="内容" required>
-        <el-input v-model="form.content" type="textarea" :rows="6" placeholder="消息正文" />
-      </el-form-item>
-    </el-form>
-    <template #footer>
-      <el-button @click="createDialogVisible = false">取消</el-button>
-      <el-button type="primary" :loading="createLoading" @click="handleCreate">发送</el-button>
-    </template>
-  </el-dialog>
-
-  <!-- 详情对话框 -->
-  <el-dialog v-model="detailVisible" title="消息详情" width="600px">
-    <div v-if="detailItem">
-      <p><el-tag :type="visibilityType(detailItem.visibility)" size="small" effect="dark">{{ visibilityLabel(detailItem.visibility) }}</el-tag></p>
-      <p><strong>标题：</strong>{{ detailItem.title }}</p>
-      <p><strong>发送者：</strong>{{ detailItem.sender_name }}</p>
-      <p v-if="detailItem.receiver_name"><strong>接收者：</strong>{{ detailItem.receiver_name }}</p>
-      <p v-if="detailItem.receiver_delegation_name"><strong>接收代表团：</strong>{{ detailItem.receiver_delegation_name }}</p>
-      <p><strong>时间：</strong>{{ formatTime(detailItem.created_at) }}</p>
-      <el-divider />
-      <div style="white-space: pre-wrap; background: #f5f7fa; padding: 16px; border-radius: 4px">
-        {{ detailItem.content || '无内容' }}
+            <div class="msg-left">
+              <div class="msg-badge" :class="'badge-' + item.visibility">
+                {{ visibilityLabel(item.visibility) }}
+              </div>
+            </div>
+            <div class="msg-body" @click="showDetail(item)">
+              <div class="msg-meta">
+                <span class="msg-sender">
+                  <el-icon><UserFilled /></el-icon>
+                  {{ item.sender_name }}
+                </span>
+                <span class="msg-target">
+                  <el-icon><ArrowRight /></el-icon>
+                  {{ item.receiver_delegation_name || item.receiver_name || '所有人' }}
+                </span>
+                <span class="msg-time">{{ formatTime(item.created_at) }}</span>
+              </div>
+              <div class="msg-title">{{ item.title }}</div>
+              <div class="msg-excerpt">{{ truncate(item.content, 120) }}</div>
+            </div>
+            <div class="msg-actions">
+              <el-tooltip content="撤回" placement="top">
+                <el-button
+                  text
+                  type="danger"
+                  size="small"
+                  class="action-btn"
+                  @click="handleDelete(item)"
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
+          </div>
+        </transition-group>
       </div>
     </div>
-  </el-dialog>
+
+    <!-- 发送对话框 -->
+    <el-dialog
+      v-model="createDialogVisible"
+      title="发送非对称消息"
+      width="580px"
+      destroy-on-close
+      class="send-dialog"
+    >
+      <el-form :model="form" label-position="top" class="send-form">
+        <div class="visibility-cards">
+          <div
+            v-for="v in visibilityOptions"
+            :key="v.value"
+            :class="['vis-card', { active: form.visibility === v.value }]"
+            @click="form.visibility = v.value"
+          >
+            <el-icon :size="22">{{ v.icon }}</el-icon>
+            <span class="vis-label">{{ v.label }}</span>
+            <span class="vis-desc">{{ v.desc }}</span>
+          </div>
+        </div>
+
+        <el-form-item v-if="form.visibility === 'private'" label="选择接收代表">
+          <el-select v-model="form.receiver_id" filterable placeholder="搜索代表姓名或席位..." style="width: 100%">
+            <el-option-group v-for="d in delegations" :key="d.id" :label="d.name">
+              <el-option
+                v-for="m in getDelegationMembers(d.id)"
+                :key="m.id"
+                :label="m.seat + (m.is_leader ? ' (阁首)' : '')"
+                :value="m.id"
+              />
+            </el-option-group>
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.visibility === 'delegation'" label="选择接收代表团">
+          <el-select v-model="form.receiver_delegation_id" filterable placeholder="选择代表团..." style="width: 100%">
+            <el-option v-for="d in delegations" :key="d.id" :label="d.name" :value="d.id" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="消息标题">
+          <el-input v-model="form.title" placeholder="输入消息标题..." maxlength="200" show-word-limit />
+        </el-form-item>
+        <el-form-item label="消息正文">
+          <el-input
+            v-model="form.content"
+            type="textarea"
+            :rows="5"
+            placeholder="输入消息正文..."
+            maxlength="5000"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="createLoading" @click="handleCreate">
+          发送消息
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 详情对话框 -->
+    <el-dialog
+      v-model="detailVisible"
+      :title="detailItem?.title || '消息详情'"
+      width="560px"
+      class="detail-dialog"
+    >
+      <div v-if="detailItem" class="detail-content">
+        <div class="detail-header-bar">
+          <el-tag :type="visibilityTagType(detailItem.visibility)" effect="dark" size="small">
+            {{ visibilityLabel(detailItem.visibility) }}
+          </el-tag>
+          <span class="detail-sender">{{ detailItem.sender_name }}</span>
+          <span class="detail-time">{{ formatTime(detailItem.created_at) }}</span>
+        </div>
+        <div v-if="detailItem.receiver_delegation_name || detailItem.receiver_name" class="detail-recipient">
+          <el-icon><ArrowRight /></el-icon>
+          接收: {{ detailItem.receiver_delegation_name || detailItem.receiver_name }}
+        </div>
+        <el-divider />
+        <div class="detail-body">{{ detailItem.content || '（无内容）' }}</div>
+      </div>
+    </el-dialog>
+  </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
+import { Plus, Message, Loading, ChatDotSquare, Delete, UserFilled, ArrowRight, Lock, Select, Avatar, Edit } from '@element-plus/icons-vue'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
 
@@ -150,29 +235,52 @@ const detailVisible = ref(false)
 const detailItem = ref(null)
 
 const form = ref({
-  visibility: 'private',
+  visibility: 'public',
   receiver_id: null,
   receiver_delegation_id: null,
   title: '',
   content: ''
 })
 
+const tabs = computed(() => [
+  { key: 'all', label: '全部', count: messages.value.length },
+  { key: 'public', label: '公开', count: messages.value.filter(m => m.visibility === 'public').length },
+  { key: 'delegation', label: '代表团', count: messages.value.filter(m => m.visibility === 'delegation').length },
+  { key: 'private', label: '私密', count: messages.value.filter(m => m.visibility === 'private').length },
+])
+
+const visibilityOptions = [
+  { value: 'public', label: '公开', icon: 'Select', desc: '委员会内所有代表可见', color: '#16a34a' },
+  { value: 'delegation', label: '代表团', icon: 'Avatar', desc: '仅指定代表团成员可见', color: '#d97706' },
+  { value: 'private', label: '私密', icon: 'Lock', desc: '仅指定代表本人可见', color: '#dc2626' },
+]
+
 const filteredMessages = computed(() => {
   if (activeTab.value === 'all') return messages.value
   return messages.value.filter(m => m.visibility === activeTab.value)
 })
 
-function visibilityType(v) {
-  return { public: 'success', delegation: 'warning', private: 'danger' }[v] || 'info'
-}
-
 function visibilityLabel(v) {
   return { public: '公开', delegation: '代表团', private: '私密' }[v] || v
+}
+function visibilityTagType(v) {
+  return { public: 'success', delegation: 'warning', private: 'danger' }[v] || 'info'
 }
 
 function formatTime(t) {
   if (!t) return ''
-  return new Date(t).toLocaleString('zh-CN')
+  const d = new Date(t)
+  const now = new Date()
+  const diff = now - d
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+function truncate(text, len) {
+  if (!text) return ''
+  return text.length > len ? text.substring(0, len) + '...' : text
 }
 
 function getDelegationMembers(delegationId) {
@@ -199,7 +307,7 @@ async function loadData() {
 }
 
 function showCreateDialog() {
-  form.value = { visibility: 'private', receiver_id: null, receiver_delegation_id: null, title: '', content: '' }
+  form.value = { visibility: 'public', receiver_id: null, receiver_delegation_id: null, title: '', content: '' }
   createDialogVisible.value = true
 }
 
@@ -209,22 +317,19 @@ function showDetail(item) {
 }
 
 async function handleCreate() {
-  if (!form.value.title || !form.value.content) {
-    ElMessage.warning('请输入标题和内容')
-    return
-  }
-  if (form.value.visibility === 'private' && !form.value.receiver_id) {
-    ElMessage.warning('请选择接收代表')
-    return
-  }
-  if (form.value.visibility === 'delegation' && !form.value.receiver_delegation_id) {
-    ElMessage.warning('请选择接收代表团')
-    return
-  }
+  if (!form.value.title?.trim()) { ElMessage.warning('请输入消息标题'); return }
+  if (!form.value.content?.trim()) { ElMessage.warning('请输入消息内容'); return }
+  if (form.value.visibility === 'private' && !form.value.receiver_id) { ElMessage.warning('请选择接收代表'); return }
+  if (form.value.visibility === 'delegation' && !form.value.receiver_delegation_id) { ElMessage.warning('请选择接收代表团'); return }
+
   createLoading.value = true
   try {
-    await api.post('/api/staff/async-messages', form.value)
-    ElMessage.success('消息已发送')
+    await api.post('/api/staff/async-messages', {
+      ...form.value,
+      title: form.value.title.trim(),
+      content: form.value.content.trim()
+    })
+    ElMessage.success({ message: '消息已发送', duration: 2000 })
     createDialogVisible.value = false
     loadData()
   } catch (e) {
@@ -235,60 +340,301 @@ async function handleCreate() {
 }
 
 async function handleDelete(item) {
-  await ElMessageBox.confirm('确定撤回此消息？', '提示', { type: 'warning' })
   try {
+    await ElMessageBox.confirm(
+      `确定撤回「${item.title}」？`,
+      '撤回确认',
+      { confirmButtonText: '撤回', cancelButtonText: '取消', type: 'warning' }
+    )
     await api.delete(`/api/staff/async-messages/${item.id}`)
-    ElMessage.success('撤回成功')
+    ElMessage.success('已撤回')
     loadData()
   } catch (e) {
-    ElMessage.error(e.response?.data?.detail || '撤回失败')
+    if (e !== 'cancel') ElMessage.error(e.response?.data?.detail || '撤回失败')
   }
 }
 
 let wsCleanup = null
-
 onMounted(() => {
   loadData()
-  // 监听 WebSocket 新消息通知
   const ws = useWebSocket()
-  const handler = (data) => {
-    if (data.type === 'new_async_message') {
-      loadData()
-    }
-  }
+  const handler = () => loadData()
   ws.on('*', handler)
   wsCleanup = () => ws.off('*', handler)
 })
-
-onUnmounted(() => {
-  if (wsCleanup) wsCleanup()
-})
+onUnmounted(() => { if (wsCleanup) wsCleanup() })
 </script>
 
 <style scoped>
-.card-header { display: flex; justify-content: space-between; align-items: center; }
-.message-item {
-  padding: 16px 0;
-  border-bottom: 1px solid #ebeef5;
-  transition: background 0.2s;
+.async-messages-page {
+  max-width: 1000px;
+  margin: 0 auto;
 }
-.message-item:last-child { border-bottom: none; }
-.message-item.unread { background: #f0f9ff; margin: 0 -16px; padding: 16px; border-radius: 4px; }
-.message-header {
+
+/* 统计卡片 */
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.stat-card-item {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 14px;
+  background: #fff;
+  padding: 18px 20px;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  transition: all 0.2s;
 }
-.message-tags { display: flex; gap: 6px; align-items: center; }
-.message-title {
-  font-size: 15px;
+.stat-card-item:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+.stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stat-info {
+  display: flex;
+  flex-direction: column;
+}
+.stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.2;
+}
+.stat-desc {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+/* 消息卡片容器 */
+.msg-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+/* 自定义标签页 */
+.msg-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 0 20px;
+}
+.tab-btn {
+  position: relative;
+  padding: 14px 18px;
+  font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: #64748b;
+  background: none;
+  border: none;
   cursor: pointer;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-btn:hover { color: #1e293b; }
+.tab-btn.active { color: #1a73e8; }
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 18px;
+  right: 18px;
+  height: 3px;
+  background: #1a73e8;
+  border-radius: 3px 3px 0 0;
+}
+.tab-count {
+  font-size: 11px;
+  background: #f1f5f9;
+  color: #94a3b8;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.tab-btn.active .tab-count {
+  background: #eef2ff;
+  color: #1a73e8;
+}
+
+/* 加载 / 空状态 */
+.loading-state, .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  gap: 12px;
+  color: #94a3b8;
+}
+.empty-icon { color: #cbd5e1; }
+.empty-state h3 { font-size: 16px; color: #64748b; margin: 0; }
+.empty-state p { font-size: 13px; color: #94a3b8; margin: 0; }
+
+/* 消息列表 */
+.msg-list { padding: 4px 0; }
+
+.msg-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f8fafc;
+  transition: all 0.2s;
+  cursor: default;
+}
+.msg-item:last-child { border-bottom: none; }
+.msg-item:hover { background: #f8fafc; }
+
+/* 左侧badge */
+.msg-left {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+  min-width: 56px;
+}
+.msg-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.badge-public { background: #f0fdf4; color: #16a34a; }
+.badge-delegation { background: #fffbeb; color: #d97706; }
+.badge-private { background: #fef2f2; color: #dc2626; }
+
+/* 消息正文 */
+.msg-body {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #94a3b8;
   margin-bottom: 4px;
 }
-.message-title:hover { color: #409eff; }
-.message-meta { color: #909399; font-size: 12px; }
-.message-time { color: #909399; font-size: 12px; margin-right: 12px; }
+.msg-sender, .msg-target { display: flex; align-items: center; gap: 3px; }
+.msg-target .el-icon { font-size: 12px; }
+.msg-time { margin-left: auto; white-space: nowrap; }
+.msg-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+.msg-excerpt {
+  font-size: 13px;
+  color: #94a3b8;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-item.is-unread {
+  background: #f0f7ff;
+  border-left: 3px solid #1a73e8;
+  margin-left: 0;
+}
+.msg-item.is-unread .msg-title { color: #1a73e8; }
+
+/* 右侧操作 */
+.msg-actions {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.msg-item:hover .msg-actions { opacity: 1; }
+.action-btn { font-size: 16px; }
+
+/* 列表动画 */
+.list-enter-active, .list-leave-active {
+  transition: all 0.3s ease;
+}
+.list-enter-from { opacity: 0; transform: translateX(-20px); }
+.list-leave-to { opacity: 0; transform: translateX(20px); }
+
+/* 发送对话框 */
+.send-dialog :deep(.el-dialog__body) { max-height: 60vh; overflow-y: auto; }
+.send-form { margin-top: 4px; }
+
+.visibility-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.vis-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.vis-card:hover {
+  border-color: #1a73e8;
+  background: #f8faff;
+}
+.vis-card.active {
+  border-color: #1a73e8;
+  background: #eef2ff;
+}
+.vis-card .vis-label { font-size: 13px; font-weight: 600; color: #0f172a; }
+.vis-card .vis-desc { font-size: 11px; color: #94a3b8; line-height: 1.3; }
+
+/* 详情对话框 */
+.detail-content { padding: 4px 0; }
+.detail-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.detail-sender { font-weight: 600; font-size: 14px; color: #0f172a; }
+.detail-time { font-size: 12px; color: #94a3b8; margin-left: auto; }
+.detail-recipient {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+.detail-body {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #334155;
+  background: #f8fafc;
+  padding: 16px;
+  border-radius: 8px;
+  min-height: 80px;
+}
 </style>
