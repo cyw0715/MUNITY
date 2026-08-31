@@ -1,5 +1,5 @@
 <template>
-  <el-card>
+  <el-card class="animate-fade-in">
     <template #header>
       <div class="card-header">
         <span>局势更新</span>

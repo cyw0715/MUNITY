@@ -1,7 +1,6 @@
 <template>
-  <div>
+  <div class="animate-fade-in">
     <el-tabs v-model="activeTab">
-      <!-- 发言历史 -->
       <el-tab-pane label="发言历史" name="speech">
         <el-row :gutter="16">
           <el-col :span="12">

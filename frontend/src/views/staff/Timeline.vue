@@ -1,5 +1,5 @@
 <template>
-  <el-card>
+  <el-card class="animate-fade-in">
     <template #header>
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <span>会议时间线</span>

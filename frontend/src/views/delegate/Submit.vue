@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="animate-fade-in">
     <el-tabs v-model="activeTab">
       <el-tab-pane label="提交指令" name="directive">
         <el-card>

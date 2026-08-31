@@ -1,5 +1,5 @@
 <template>
-  <el-card>
+  <el-card class="animate-fade-in">
     <template #header>
       <span>指令管理</span>
     </template>

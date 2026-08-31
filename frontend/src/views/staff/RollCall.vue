@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="animate-fade-in">
     <el-card>
       <template #header>
         <div class="card-header">
