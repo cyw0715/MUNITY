@@ -172,12 +172,12 @@ onUnmounted(() => { if (wsCleanup) wsCleanup() })
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #eef2ff;
+  background: #edf3fb;
   padding: 8px 16px;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
-  color: #1a73e8;
+  color: #5b92e5;
 }
 
 /* 消息卡片 */
@@ -243,10 +243,10 @@ onUnmounted(() => { if (wsCleanup) wsCleanup() })
 /* 未读高亮 */
 .msg-item.is-unread {
   background: #f0f7ff;
-  border-left: 3px solid #1a73e8;
+  border-left: 3px solid #5b92e5;
   margin-left: 0;
 }
-.msg-item.is-unread .msg-title { color: #1a73e8; }
+.msg-item.is-unread .msg-title { color: #5b92e5; }
 
 /* 详情 */
 .detail-content { padding: 4px 0; }

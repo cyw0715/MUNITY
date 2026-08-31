@@ -4,7 +4,7 @@
     <el-card v-if="timeline && timeline.has_timeline" style="margin-bottom: 20px;">
       <div style="text-align: center;">
         <div style="font-size: 14px; color: #909399; margin-bottom: 4px;">会议时间</div>
-        <div style="font-size: 36px; font-weight: bold; color: #409eff;">
+        <div style="font-size: 36px; font-weight: bold; color: #5b92e5;">
           {{ formatDate(timeline.current_date) }}
         </div>
         <div style="color: #909399; margin-top: 4px;">
@@ -123,6 +123,6 @@ onUnmounted(() => {
 <style scoped>
 .stat-card { cursor: pointer; text-align: center; transition: box-shadow 0.2s; }
 .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-.stat-value { font-size: 36px; font-weight: bold; color: #409eff; }
+.stat-value { font-size: 36px; font-weight: bold; color: #5b92e5; }
 .stat-label { color: #909399; margin-top: 8px; }
 </style>

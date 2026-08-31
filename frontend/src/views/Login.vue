@@ -16,8 +16,8 @@
             <text x="20" y="27" text-anchor="middle" fill="white" font-size="20" font-weight="700" font-family="system-ui">M</text>
             <defs>
               <linearGradient id="brand-grad" x1="0" y1="0" x2="40" y2="40">
-                <stop stop-color="#1a73e8" />
-                <stop offset="1" stop-color="#6366f1" />
+                <stop stop-color="#5b92e5" />
+                <stop offset="1" stop-color="#3d7ed9" />
               </linearGradient>
             </defs>
           </svg>
@@ -160,19 +160,19 @@ async function handleLogin() {
 }
 .bg-circle-1 {
   width: 500px; height: 500px;
-  background: #1a73e8;
+  background: #5b92e5;
   top: -150px; left: -150px;
   animation: float 8s ease-in-out infinite;
 }
 .bg-circle-2 {
   width: 400px; height: 400px;
-  background: #6366f1;
+  background: #5b92e5;
   bottom: -100px; right: -100px;
   animation: float 10s ease-in-out infinite reverse;
 }
 .bg-circle-3 {
   width: 300px; height: 300px;
-  background: #06b6d4;
+  background: #7bb5f0;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   animation: float 12s ease-in-out infinite 2s;
@@ -231,7 +231,7 @@ async function handleLogin() {
   font-weight: 600;
   letter-spacing: 2px;
   border-radius: 10px !important;
-  background: linear-gradient(135deg, #1a73e8, #6366f1);
+  background: linear-gradient(135deg, #5b92e5, #3d7ed9);
   border: none;
   transition: all 0.25s ease;
 }

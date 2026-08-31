@@ -148,7 +148,7 @@ onUnmounted(() => {
 }
 
 .admin-menu .el-menu-item.is-active {
-  color: #409eff;
+  color: #5b92e5;
 }
 
 .el-header {

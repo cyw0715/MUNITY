@@ -291,7 +291,7 @@ const filteredProposers = computed(() => {
 
 // 发言者颜色
 const delegationColors = {}
-const colorPalette = ['#1a73e8','#e84393','#6c5ce7','#00b894','#fdcb6e','#e17055','#0984e3','#00cec9','#fd79a8','#636e72','#2ecc71','#e74c3c']
+const colorPalette = ['#5b92e5','#e84393','#6c5ce7','#00b894','#fdcb6e','#e17055','#0984e3','#00cec9','#fd79a8','#636e72','#2ecc71','#e74c3c']
 function getSpeakerColor(name) {
   if (!name) return '#94a3b8'
   if (!delegationColors[name]) {
@@ -435,7 +435,7 @@ onUnmounted(() => {
 
 .countdown {
   font-size: 64px; font-weight: 800; font-family: 'Fira Mono', 'JetBrains Mono', monospace;
-  color: #1a73e8; line-height: 1.1; margin: 12px 0 20px;
+  color: #5b92e5; line-height: 1.1; margin: 12px 0 20px;
   transition: color 0.3s;
 }
 .countdown.warning { color: #e6a23c; animation: pulse 1s infinite; }
@@ -502,7 +502,7 @@ onUnmounted(() => {
 }
 .speaker-row:hover { background: #f8fafc; }
 .speaker-row.active { background: #f0fdf4; border-left-color: #22c55e; }
-.speaker-row.current { background: #eef2ff; border-left-color: #1a73e8; }
+.speaker-row.current { background: #edf3fb; border-left-color: #5b92e5; }
 .speaker-row.spoken { opacity: 0.55; }
 
 .spk-order {
@@ -552,6 +552,6 @@ onUnmounted(() => {
 }
 .agenda-select-item:last-child { border-bottom: none; }
 .agenda-select-item:hover { background: #f8fafc; }
-.agenda-select-item.active { background: #eef2ff; border-left: 3px solid #1a73e8; }
+.agenda-select-item.active { background: #edf3fb; border-left: 3px solid #5b92e5; }
 .agenda-select-title { flex: 1; font-size: 14px; color: #1e293b; }
 </style>

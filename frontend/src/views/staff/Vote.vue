@@ -515,7 +515,7 @@ onMounted(loadData)
 }
 
 .history-item:hover {
-  border-color: #409eff;
+  border-color: #5b92e5;
   background: #f5f7fa;
 }
 

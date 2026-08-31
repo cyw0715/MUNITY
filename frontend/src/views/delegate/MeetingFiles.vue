@@ -107,7 +107,7 @@ onMounted(loadData)
 .file-item:last-child { border-bottom: none; }
 .file-header { display: flex; justify-content: space-between; align-items: center; }
 .file-title { font-size: 16px; font-weight: bold; color: #303133; cursor: pointer; }
-.file-title:hover { color: #409eff; }
+.file-title:hover { color: #5b92e5; }
 .file-time { color: #909399; font-size: 12px; margin-left: 12px; }
 .search-result-item {
   padding: 12px;

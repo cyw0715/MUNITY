@@ -78,6 +78,6 @@ onMounted(async () => {
 <style scoped>
 .stat-card { cursor: pointer; text-align: center; transition: box-shadow 0.2s; }
 .stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-.stat-value { font-size: 36px; font-weight: bold; color: #409eff; }
+.stat-value { font-size: 36px; font-weight: bold; color: #5b92e5; }
 .stat-label { color: #909399; margin-top: 8px; }
 </style>

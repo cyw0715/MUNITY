@@ -294,7 +294,7 @@ onMounted(loadData)
   color: #303133;
   cursor: pointer;
 }
-.update-title:hover { color: #409eff; }
+.update-title:hover { color: #5b92e5; }
 .update-time { color: #909399; font-size: 12px; }
 .update-meta { margin-top: 8px; }
 .search-result-item {

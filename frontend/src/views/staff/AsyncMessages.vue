@@ -14,7 +14,7 @@
     <!-- 统计卡片 -->
     <div class="stat-cards">
       <div class="stat-card-item">
-        <div class="stat-icon" style="background: #eef2ff; color: #1a73e8;">
+        <div class="stat-icon" style="background: #edf3fb; color: #5b92e5;">
           <el-icon :size="20"><Message /></el-icon>
         </div>
         <div class="stat-info">
@@ -478,7 +478,7 @@ onUnmounted(() => {
   gap: 6px;
 }
 .tab-btn:hover { color: #1e293b; }
-.tab-btn.active { color: #1a73e8; }
+.tab-btn.active { color: #5b92e5; }
 .tab-btn.active::after {
   content: '';
   position: absolute;
@@ -486,7 +486,7 @@ onUnmounted(() => {
   left: 18px;
   right: 18px;
   height: 3px;
-  background: #1a73e8;
+  background: #5b92e5;
   border-radius: 3px 3px 0 0;
 }
 .tab-count {
@@ -498,8 +498,8 @@ onUnmounted(() => {
   font-weight: 600;
 }
 .tab-btn.active .tab-count {
-  background: #eef2ff;
-  color: #1a73e8;
+  background: #edf3fb;
+  color: #5b92e5;
 }
 
 /* 加载 / 空状态 */
@@ -584,10 +584,10 @@ onUnmounted(() => {
 }
 .msg-item.is-unread {
   background: #f0f7ff;
-  border-left: 3px solid #1a73e8;
+  border-left: 3px solid #5b92e5;
   margin-left: 0;
 }
-.msg-item.is-unread .msg-title { color: #1a73e8; }
+.msg-item.is-unread .msg-title { color: #5b92e5; }
 
 /* 右侧操作 */
 .msg-actions {
@@ -630,12 +630,12 @@ onUnmounted(() => {
   text-align: center;
 }
 .vis-card:hover {
-  border-color: #1a73e8;
+  border-color: #5b92e5;
   background: #f8faff;
 }
 .vis-card.active {
-  border-color: #1a73e8;
-  background: #eef2ff;
+  border-color: #5b92e5;
+  background: #edf3fb;
 }
 .vis-card .vis-label { font-size: 13px; font-weight: 600; color: #0f172a; }
 .vis-card .vis-desc { font-size: 11px; color: #94a3b8; line-height: 1.3; }

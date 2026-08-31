@@ -7,7 +7,7 @@
           <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
             <rect width="40" height="40" rx="10" fill="url(#brand-grad-s)" />
             <text x="20" y="27" text-anchor="middle" fill="white" font-size="20" font-weight="700">M</text>
-            <defs><linearGradient id="brand-grad-s" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#1a73e8"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs>
+            <defs><linearGradient id="brand-grad-s" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#5b92e5"/><stop offset="1" stop-color="#3d7ed9"/></linearGradient></defs>
           </svg>
         </div>
         <span class="brand-text">MUNITY OS</span>
@@ -99,7 +99,7 @@
           </el-tooltip>
           <el-dropdown @command="handleCommand" trigger="click">
             <span class="user-btn">
-              <el-avatar :size="28" style="background: linear-gradient(135deg,#1a73e8,#6366f1); color: #fff; font-size: 13px;">
+              <el-avatar :size="28" style="background: linear-gradient(135deg,#5b92e5,#3d7ed9); color: #fff; font-size: 13px;">
                 {{ authStore.user?.username?.charAt(0) || 'U' }}
               </el-avatar>
               <span class="user-name">{{ authStore.user?.username }}</span>
@@ -335,7 +335,7 @@ onUnmounted(() => {
 }
 .committee-badge {
   font-size: 11px;
-  background: #eef2ff;
+  background: #edf3fb;
   color: var(--brand-primary);
   padding: 3px 10px;
   border-radius: 12px;

@@ -9,7 +9,7 @@
     </template>
 
     <div v-if="timeline" style="text-align: center; margin-bottom: 20px;">
-      <div style="font-size: 32px; font-weight: bold; color: #409eff;">
+      <div style="font-size: 32px; font-weight: bold; color: #5b92e5;">
         {{ formatDate(timeline.current_date) }}
       </div>
       <div style="color: #909399; margin-top: 8px;">

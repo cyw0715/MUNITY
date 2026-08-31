@@ -4,14 +4,14 @@
 
 :root {
   /* 品牌色 */
-  --brand-primary: #5b92e5;
-  --brand-primary-light: #7bb5f0;
-  --brand-primary-dark: #4a7dc4;
+  --brand-primary: #1a73e8;
+  --brand-primary-light: #4a9eff;
+  --brand-primary-dark: #1557b0;
   
   /* 深色侧边栏 */
   --sidebar-bg: #1e293b;
   --sidebar-bg-hover: #334155;
-  --sidebar-bg-active: #5b92e5;
+  --sidebar-bg-active: #1a73e8;
   --sidebar-text: #94a3b8;
   --sidebar-text-active: #ffffff;
   --sidebar-width: 220px;
@@ -131,7 +131,7 @@ html, body, #app {
   background: #f8fafc !important;
 }
 .el-table__body tr:hover > td {
-  background: #edf3fb !important;
+  background: #eef2ff !important;
 }
 
 /* Dialog */

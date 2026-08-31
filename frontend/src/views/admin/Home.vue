@@ -58,5 +58,5 @@ onMounted(async () => {
 }
 .stat-item:last-child { border-bottom: none; }
 .label { color: #606266; }
-.value { font-size: 20px; font-weight: bold; color: #409eff; }
+.value { font-size: 20px; font-weight: bold; color: #5b92e5; }
 </style>
