@@ -13,15 +13,21 @@
         <el-table-column prop="username" label="用户名" />
         <el-table-column label="所属委员会">
           <template #default="{ row }">
-            {{ getCommitteeName(row.committee_id) }}
+            <el-tag
+              v-for="c in getStaffCommittees(row.id)"
+              :key="c.id"
+              size="small"
+              style="margin: 2px"
+            >{{ c.name }}</el-tag>
+            <span v-if="getStaffCommittees(row.id).length === 0" style="color: #999">未分配</span>
           </template>
         </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
+        <el-table-column label="创建时间" width="180">
           <template #default="{ row }">
             {{ new Date(row.created_at).toLocaleString('zh-CN') }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="220">
           <template #default="{ row }">
             <el-button size="small" @click="showAssignDialog(row)">分配委员会</el-button>
             <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
@@ -46,9 +52,18 @@
       </template>
     </el-dialog>
 
-    <!-- 分配委员会对话框 -->
-    <el-dialog v-model="assignDialogVisible" title="分配委员会" width="400px">
-      <el-select v-model="selectedCommitteeId" placeholder="选择委员会" style="width: 100%">
+    <!-- 分配委员会对话框（多选） -->
+    <el-dialog v-model="assignDialogVisible" title="分配委员会（可多选）" width="450px">
+      <p style="color: #666; margin-bottom: 12px; font-size: 13px;">
+        为 <strong>{{ assignTargetName }}</strong> 选择可管理的委员会
+      </p>
+      <el-select
+        v-model="selectedCommitteeIds"
+        multiple
+        filterable
+        placeholder="选择委员会..."
+        style="width: 100%"
+      >
         <el-option
           v-for="c in committees"
           :key="c.id"
@@ -71,13 +86,15 @@ import api from '../../api'
 
 const staffList = ref([])
 const committees = ref([])
+const staffCommitteesMap = ref({})  // { staffId: [{id, name}, ...] }
 const addDialogVisible = ref(false)
 const assignDialogVisible = ref(false)
 const addLoading = ref(false)
 const assignLoading = ref(false)
 const addFormRef = ref(null)
 const selectedStaffId = ref(null)
-const selectedCommitteeId = ref(null)
+const assignTargetName = ref('')
+const selectedCommitteeIds = ref([])
 
 const addForm = ref({ username: '', password: '' })
 const addRules = {
@@ -85,9 +102,22 @@ const addRules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
 }
 
-function getCommitteeName(id) {
-  const c = committees.value.find(c => c.id === id)
-  return c ? c.name : '未分配'
+function getStaffCommittees(staffId) {
+  return staffCommitteesMap.value[staffId] || []
+}
+
+async function loadStaffCommittees() {
+  const map = {}
+  // 并行加载每个学团的委员会列表
+  const results = await Promise.all(
+    staffList.value.map(s =>
+      api.get(`/api/admin/staff/${s.id}/committees`).then(r => ({ id: s.id, data: r.data })).catch(() => null)
+    )
+  )
+  for (const r of results) {
+    if (r) map[r.id] = r.data || []
+  }
+  staffCommitteesMap.value = map
 }
 
 async function loadData() {
@@ -97,6 +127,7 @@ async function loadData() {
   ])
   staffList.value = staffRes.data
   committees.value = committeeRes.data
+  await loadStaffCommittees()
 }
 
 function showAddDialog() {
@@ -106,7 +137,10 @@ function showAddDialog() {
 
 function showAssignDialog(staff) {
   selectedStaffId.value = staff.id
-  selectedCommitteeId.value = staff.committee_id
+  assignTargetName.value = staff.username
+  // 预填已选委员会
+  const existing = staffCommitteesMap.value[staff.id] || []
+  selectedCommitteeIds.value = existing.map(c => c.id)
   assignDialogVisible.value = true
 }
 
@@ -129,9 +163,15 @@ async function handleAdd() {
 }
 
 async function handleAssign() {
+  if (!selectedCommitteeIds.value || selectedCommitteeIds.value.length === 0) {
+    ElMessage.warning('请至少选择一个委员会')
+    return
+  }
   assignLoading.value = true
   try {
-    await api.put(`/api/admin/staff/${selectedStaffId.value}/assign/${selectedCommitteeId.value}`)
+    await api.put(`/api/admin/staff/${selectedStaffId.value}/assign-committees`, {
+      committee_ids: selectedCommitteeIds.value
+    })
     ElMessage.success('分配成功')
     assignDialogVisible.value = false
     loadData()
