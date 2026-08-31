@@ -11,23 +11,60 @@
         </div>
       </template>
 
-      <el-table :data="agendaItems" style="width: 100%" row-key="id" :tree-props="{ children: 'children' }" default-expand-all>
+      <div class="drag-hint">
+        <el-icon style="margin-right: 4px; vertical-align: middle"><Rank /></el-icon>
+        拖动行可调整顺序，点击 <el-icon style="vertical-align: middle"><FolderOpened /></el-icon>
+        <el-icon style="vertical-align: middle"><Folder /></el-icon> 可升降层级
+      </div>
+
+      <el-table
+        ref="tableRef"
+        :data="agendaItems"
+        style="width: 100%"
+        row-key="id"
+        :tree-props="{ children: 'children' }"
+        default-expand-all
+        class="drag-table"
+      >
         <el-table-column prop="title" label="议程标题" min-width="300">
           <template #default="{ row }">
-            <span :style="{ paddingLeft: (row.level - 1) * 20 + 'px' }">
+            <span class="drag-handle" :style="{ paddingLeft: (row.level - 1) * 24 + 'px' }">
+              <el-icon class="drag-icon"><Rank /></el-icon>
               <el-tag size="small" :type="getLevelType(row.level)" style="margin-right: 8px">L{{ row.level }}</el-tag>
               {{ row.title }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="层级" width="100">
+          <template #default="{ row }">
+            <el-button-group size="small">
+              <el-button
+                size="small"
+                :disabled="row.level <= 1"
+                @click="adjustLevel(row, -1)"
+                title="降低层级（左移）"
+              >
+                <el-icon><FolderOpened /></el-icon>
+              </el-button>
+              <el-button
+                size="small"
+                :disabled="row.level >= 5"
+                @click="adjustLevel(row, 1)"
+                title="提升层级（右移）"
+              >
+                <el-icon><Folder /></el-icon>
+              </el-button>
+            </el-button-group>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
               {{ row.is_active ? '当前' : '待定' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200">
+        <el-table-column label="操作" width="180">
           <template #default="{ row }">
             <el-button size="small" :type="row.is_active ? 'warning' : 'success'" @click="handleActivate(row)">
               {{ row.is_active ? '已激活' : '激活' }}
@@ -45,11 +82,11 @@
           <el-input v-model="addForm.title" placeholder="如：一般性辩论、议题讨论" />
         </el-form-item>
         <el-form-item label="父级议程">
-          <el-select v-model="addForm.parent_id" placeholder="顶级议程（不选）" clearable style="width: 100%">
-            <el-option label="顶级议程" :value="null" />
+          <el-select v-model="addForm.parent_id" placeholder="一级议程（不选）" clearable style="width: 100%">
+            <el-option label="一级议程" :value="null" />
             <el-option v-for="item in flatAgendaItems" :key="item.id" :label="getIndentedLabel(item)" :value="item.id" :disabled="item.level >= 5" />
           </el-select>
-          <div class="form-help">选择一个父议程作为子项，或不选作为顶级议程</div>
+          <div class="form-help">选择父议程作为子项，或不选作为一级议程</div>
         </el-form-item>
         <el-form-item v-if="addForm.parent_id" label="层级">
           <el-input :model-value="'子议程（L' + computedLevel + '）'" disabled />
@@ -105,9 +142,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../../api'
+import { Rank, FolderOpened, Folder } from '@element-plus/icons-vue'
+
+let sortableInstance = null
 
 const agendaItems = ref([])
 const addDialogVisible = ref(false)
@@ -117,6 +157,7 @@ const importDialogVisible = ref(false)
 const importLoading = ref(false)
 const importText = ref('')
 const parsedItems = ref([])
+const tableRef = ref(null)
 
 const addForm = ref({ title: '', parent_id: null })
 const addRules = {
@@ -128,14 +169,14 @@ function getLevelType(level) {
   return types[(level - 1) % types.length] || ''
 }
 
-// 扁平化议程列表（用于父级选择器）
+// 扁平化议程列表
 const flatAgendaItems = computed(() => {
   const result = []
-  function flatten(items, depth = 0) {
+  function flatten(items) {
     for (const item of items) {
       result.push(item)
       if (item.children?.length) {
-        flatten(item.children, depth + 1)
+        flatten(item.children)
       }
     }
   }
@@ -150,41 +191,29 @@ const computedLevel = computed(() => {
   return parent ? Math.min(parent.level + 1, 5) : 1
 })
 
-// 带缩进的标签显示
 function getIndentedLabel(item) {
-  const indent = '　'.repeat(item.level - 1)
-  return indent + item.title
-}
-
-// 获取下一个排序号（追加到末尾）
-function getNextOrder() {
-  return flatAgendaItems.value.length
+  return '　'.repeat(item.level - 1) + item.title
 }
 
 async function loadAgenda() {
   const { data } = await api.get('/api/staff/agenda')
   agendaItems.value = buildTree(data)
+  await nextTick()
+  initSortable()
 }
 
-// 构建树形结构
 function buildTree(items) {
   const map = {}
   const roots = []
-  
-  // 先创建所有节点
   for (const item of items) {
     map[item.id] = { ...item, children: [] }
   }
-  
-  // 构建树
   for (const item of items) {
     const node = map[item.id]
-    // 找父节点：在它之前的、level 比它小 1 的最近节点
     const parentLevel = item.level - 1
     if (parentLevel <= 0) {
       roots.push(node)
     } else {
-      // 向前找最近的 level = parentLevel 的节点
       const idx = items.indexOf(item)
       let parentId = null
       for (let i = idx - 1; i >= 0; i--) {
@@ -200,9 +229,98 @@ function buildTree(items) {
       }
     }
   }
-  
   return roots
 }
+
+// === 拖拽排序（SortableJS） ===
+
+function initSortable() {
+  import('sortablejs').then(({ default: Sortable }) => {
+    destroySortable()
+    const el = document.querySelector('.el-table__body-wrapper tbody')
+    if (!el) return
+    sortableInstance = new Sortable(el, {
+      handle: '.drag-handle',
+      animation: 200,
+      ghostClass: 'drag-ghost',
+      onEnd: async function (evt) {
+        // 从旧列表取拖拽的条目（带子节点）
+        const draggedId = parseInt(evt.item.dataset.rowKey)
+        const oldIndex = evt.oldIndex
+        const newIndex = evt.newIndex
+        if (oldIndex === newIndex) return
+
+        // 读取当前扁平列表（从 DOM row-key）
+        const rows = el.querySelectorAll('tr')
+        const idOrder = []
+        for (const row of rows) {
+          const id = parseInt(row.dataset.rowKey)
+          if (!isNaN(id)) idOrder.push(id)
+        }
+
+        // 从当前树结构中提取完整的扁平数据（包括子节点结构）
+        const allFlat = flattenDataRef(agendaItems.value)
+
+        // 新的顺序
+        const reordered = idOrder.map(id => allFlat.find(i => i.id === id)).filter(Boolean)
+        await submitReorder(reordered)
+      }
+    })
+  })
+}
+
+function destroySortable() {
+  if (sortableInstance) {
+    sortableInstance.destroy()
+    sortableInstance = null
+  }
+}
+
+// 带深拷贝的扁平化
+function flattenDataRef(tree) {
+  const result = []
+  function walk(items) {
+    for (const item of items) {
+      result.push({ id: item.id, level: item.level, order: item.order, is_active: item.is_active, title: item.title })
+      if (item.children?.length) walk(item.children)
+    }
+  }
+  walk(tree)
+  return result
+}
+
+// 提交排序变更
+async function submitReorder(items) {
+  const updates = items.map((item, i) => ({
+    id: item.id,
+    order: i,
+    level: item.level
+  }))
+  try {
+    await api.put('/api/staff/agenda/reorder', { items: updates })
+    ElMessage.success('排序已更新')
+    loadAgenda()
+  } catch (err) {
+    ElMessage.error(err.response?.data?.detail || '排序更新失败')
+    loadAgenda() // 恢复
+  }
+}
+
+// === 调整层级 ===
+
+async function adjustLevel(row, delta) {
+  const newLevel = row.level + delta
+  if (newLevel < 1 || newLevel > 5) return
+  try {
+    await api.put(`/api/staff/agenda/${row.id}/level`, { level: newLevel })
+    ElMessage.success('层级已更新')
+    loadAgenda()
+  } catch (err) {
+    ElMessage.error(err.response?.data?.detail || '更新失败')
+  }
+}
+
+// === 增删改 ===
 
 function showAddDialog() {
   addForm.value = { title: '', parent_id: null }
@@ -215,64 +333,37 @@ function showImportDialog() {
   importDialogVisible.value = true
 }
 
-// 解析导入文本
 function parseImportText() {
   const lines = importText.value.split('\n')
   const items = []
-  
   for (const line of lines) {
     if (!line.trim()) continue
-    
-    // 1. 检查 Markdown 标题格式
     const mdMatch = line.match(/^(#{1,10})\s+(.+)$/)
     if (mdMatch) {
-      items.push({
-        title: mdMatch[2].trim(),
-        level: mdMatch[1].length,
-        numStr: '#'.repeat(mdMatch[1].length)
-      })
+      items.push({ title: mdMatch[2].trim(), level: mdMatch[1].length, numStr: '#'.repeat(mdMatch[1].length) })
       continue
     }
-    
-    // 2. 检查编号格式
     const numMatch = line.match(/^(\s*)(\d+(?:\.\d+)*)\s*[.．]?\s*(.+)$/)
     if (numMatch) {
       const numStr = numMatch[2]
-      const level = numStr.split('.').length
-      items.push({
-        title: numMatch[3].trim(),
-        level: level,
-        numStr: numStr
-      })
+      items.push({ title: numMatch[3].trim(), level: numStr.split('.').length, numStr })
       continue
     }
-    
-    // 3. 检查缩进格式
     const indentMatch = line.match(/^(\s+)(.+)$/)
     if (indentMatch) {
-      const spaces = indentMatch[1].replace(/\t/g, '  ').length
-      const level = Math.floor(spaces / 2) + 1
       items.push({
         title: indentMatch[2].trim(),
-        level: level,
+        level: Math.floor(indentMatch[1].replace(/\t/g, '  ').length / 2) + 1,
         numStr: '-'
       })
       continue
     }
-    
-    // 4. 默认为一级
-    items.push({
-      title: line.trim(),
-      level: 1,
-      numStr: '-'
-    })
+    items.push({ title: line.trim(), level: 1, numStr: '-' })
   }
-  
   parsedItems.value = items
   ElMessage.success(`解析完成，共 ${items.length} 项`)
 }
 
-// 导入议程
 async function handleImport() {
   if (!parsedItems.value.length) {
     parseImportText()
@@ -281,15 +372,9 @@ async function handleImport() {
       return
     }
   }
-  
   importLoading.value = true
   try {
-    const items = parsedItems.value.map((item, i) => ({
-      title: item.title,
-      level: item.level,
-      order: i
-    }))
-    
+    const items = parsedItems.value.map((item, i) => ({ title: item.title, level: item.level, order: i }))
     const { data } = await api.post('/api/staff/agenda/batch', { items })
     ElMessage.success(data.message)
     importDialogVisible.value = false
@@ -306,12 +391,8 @@ async function handleAdd() {
   addLoading.value = true
   try {
     const level = computedLevel.value
-    const order = getNextOrder()
-    await api.post('/api/staff/agenda', {
-      title: addForm.value.title,
-      level: level,
-      order: order
-    })
+    const order = flatAgendaItems.value.length
+    await api.post('/api/staff/agenda', { title: addForm.value.title, level, order })
     ElMessage.success('添加成功')
     addDialogVisible.value = false
     loadAgenda()
@@ -358,6 +439,35 @@ onMounted(loadAgenda)
   color: #909399;
   margin-top: 4px;
   line-height: 1.4;
+}
+.drag-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 10px;
+  padding: 6px 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.drag-handle {
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+  user-select: none;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.drag-icon {
+  color: #c0c4cc;
+  margin-right: 6px;
+  font-size: 14px;
+}
+:deep(.drag-ghost) {
+  opacity: 0.5;
+  background: #edf3fb !important;
+}
+:deep(.el-table__body-wrapper tbody tr.drag-ghost > td) {
+  background: #edf3fb !important;
 }
 .import-hint {
   margin-bottom: 16px;

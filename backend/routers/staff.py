@@ -269,6 +269,16 @@ class AgendaItemCreate(BaseModel):
     order: int = 0
 
 
+class AgendaReorderItem(BaseModel):
+    id: int
+    order: int
+    level: int
+
+
+class AgendaReorderRequest(BaseModel):
+    items: List[AgendaReorderItem]
+
+
 class AgendaItemOut(BaseModel):
     id: int
     committee_id: int
@@ -346,6 +356,54 @@ def delete_all_agenda(
     ).delete()
     db.commit()
     return {"message": f"已删除 {count} 项议程", "count": count}
+
+
+@router.put("/agenda/reorder")
+def reorder_agenda(
+    data: AgendaReorderRequest,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """批量更新议程顺序和层级"""
+    committee_id = get_staff_committee(current_user)
+    count = 0
+    for upd in data.items:
+        item = db.query(AgendaItem).filter(
+            AgendaItem.id == upd.id,
+            AgendaItem.committee_id == committee_id
+        ).first()
+        if item:
+            item.order = upd.order
+            item.level = upd.level
+            count += 1
+    db.commit()
+    return {"message": f"已更新 {count} 项议程顺序", "count": count}
+
+
+class AgendaLevelUpdate(BaseModel):
+    level: int
+
+
+@router.put("/agenda/{item_id}/level")
+def update_agenda_level(
+    item_id: int,
+    data: AgendaLevelUpdate,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """更新单条议程的层级"""
+    committee_id = get_staff_committee(current_user)
+    item = db.query(AgendaItem).filter(
+        AgendaItem.id == item_id,
+        AgendaItem.committee_id == committee_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="议程不存在")
+    if data.level < 1 or data.level > 5:
+        raise HTTPException(status_code=400, detail="层级必须在 1-5 之间")
+    item.level = data.level
+    db.commit()
+    return {"message": "层级已更新", "level": item.level}
 
 
 @router.delete("/agenda/{item_id}")
