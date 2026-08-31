@@ -158,23 +158,24 @@ def staff_create_async_message(
     db.commit()
     db.refresh(msg)
 
-    # WebSocket 推送通知
-    ws_payload = {
-        "type": "new_async_message",
-        "message": msg_to_dict(msg, db)
-    }
-    if data.receiver_id:
-        # 私密消息推送给特定代表
+    # WebSocket 推送通知（异步，出错不影响消息保存）
+    try:
         import asyncio
-        asyncio.ensure_future(ws_manager.send_to_user(data.receiver_id, ws_payload))
-    elif data.receiver_delegation_id:
-        # 代表团消息推送给所有成员
-        import asyncio
-        asyncio.ensure_future(ws_manager.send_to_delegation(data.receiver_delegation_id, ws_payload, db))
-    else:
-        # 公开或全部可见的消息
-        import asyncio
-        asyncio.ensure_future(ws_manager.broadcast_committee(committee_id, ws_payload))
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        ws_payload = {
+            "type": "new_async_message",
+            "message": msg_to_dict(msg, db)
+        }
+        if data.receiver_id:
+            loop.run_until_complete(ws_manager.send_to_user(data.receiver_id, ws_payload))
+        elif data.receiver_delegation_id:
+            loop.run_until_complete(ws_manager.send_to_delegation(data.receiver_delegation_id, ws_payload, db))
+        else:
+            loop.run_until_complete(ws_manager.broadcast_committee(committee_id, ws_payload))
+        loop.close()
+    except Exception as e:
+        logger.warning(f"WebSocket 推送失败（消息已保存）: {e}")
 
     return msg_to_dict(msg, db)
 
