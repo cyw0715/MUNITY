@@ -54,15 +54,35 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Close } from '@element-plus/icons-vue'
 import api from '../../api'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const rollcallData = ref([])
 const activeDelegations = ref([])
 
-// 按代表团分组
+// WebSocket 监听点名更新
+let wsCleanup = null
+onMounted(() => {
+  loadRollCall()
+  const ws = useWebSocket()
+  const handler = (data) => {
+    if (data.type === 'rollcall_updated') {
+      // 就地更新对应代表的状态，无需整表重载
+      const found = rollcallData.value.find(d => d.id === data.delegate_id)
+      if (found) {
+        found.is_present = data.is_present
+      }
+    }
+  }
+  ws.on('*', handler)
+  wsCleanup = () => ws.off('*', handler)
+})
+onUnmounted(() => {
+  if (wsCleanup) wsCleanup()
+})
 const groupedData = computed(() => {
   const map = new Map()
   for (const item of rollcallData.value) {

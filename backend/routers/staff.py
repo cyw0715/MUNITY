@@ -548,6 +548,19 @@ def update_delegate_rollcall(
         db.add(record)
 
     db.commit()
+
+    # WebSocket 广播：点名状态变更
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+            "type": "rollcall_updated",
+            "delegate_id": delegate_id,
+            "is_present": is_present
+        }))
+    except Exception:
+        pass
+
     return {"message": "更新成功"}
 
 
