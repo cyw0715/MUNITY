@@ -425,7 +425,7 @@ def delete_agenda_item(
 
 
 @router.put("/agenda/{item_id}/activate")
-def activate_agenda_item(
+async def activate_agenda_item(
     item_id: int,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -445,6 +445,18 @@ def activate_agenda_item(
         raise HTTPException(status_code=404, detail="议程不存在")
     item.is_active = True
     db.commit()
+
+    # WS 广播：当前议程变更
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "agenda_changed",
+            "action": "activated",
+            "item_id": item_id
+        })
+    except Exception:
+        pass
+
     return {"message": "已激活"}
 
 
@@ -1097,7 +1109,7 @@ def list_updates(
 
 
 @router.post("/updates")
-def create_update(
+async def create_update(
     data: UpdateCreate,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -1113,11 +1125,22 @@ def create_update(
     )
     db.add(update)
     db.commit()
+
+    # WS 广播：新局势更新
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
+    except Exception:
+        pass
+
     return {"message": "发布成功"}
 
 
 @router.delete("/updates/{update_id}")
-def delete_update(
+async def delete_update(
     update_id: int,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -1131,6 +1154,17 @@ def delete_update(
         raise HTTPException(status_code=404, detail="更新不存在")
     db.delete(update)
     db.commit()
+
+    # WS 广播：局势更新被删除
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "deleted"
+        })
+    except Exception:
+        pass
+
     return {"message": "删除成功"}
 
 
@@ -1270,7 +1304,7 @@ def update_document(
 
 
 @router.put("/documents/{doc_id}/recall")
-def recall_document(
+async def recall_document(
     doc_id: int,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -1285,11 +1319,23 @@ def recall_document(
         raise HTTPException(status_code=404, detail="文件不存在")
     doc.recalled = True
     db.commit()
+
+    # WS 广播：文件撤回
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "documents_changed",
+            "action": "recalled",
+            "doc_id": doc_id
+        })
+    except Exception:
+        pass
+
     return {"message": "撤回成功"}
 
 
 @router.put("/documents/{doc_id}/restore")
-def restore_document(
+async def restore_document(
     doc_id: int,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -1304,6 +1350,18 @@ def restore_document(
         raise HTTPException(status_code=404, detail="文件不存在")
     doc.recalled = False
     db.commit()
+
+    # WS 广播：文件恢复
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "documents_changed",
+            "action": "restored",
+            "doc_id": doc_id
+        })
+    except Exception:
+        pass
+
     return {"message": "恢复成功"}
 
 
@@ -1314,14 +1372,14 @@ class DirectPublish(BaseModel):
 
 
 @router.post("/publish-direct")
-def publish_direct(
+async def publish_direct(
     data: DirectPublish,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
 ):
     """主席团直接发布文件到会议文件"""
     committee_id = get_staff_committee(current_user)
-    
+
     doc_type_labels = {"declaration": "声明", "memorandum": "备忘录", "agreement": "协定"}
     type_label = doc_type_labels.get(data.doc_type, data.doc_type)
     title = f"[{type_label}] {data.title}"
@@ -1337,6 +1395,17 @@ def publish_direct(
     )
     db.add(update)
     db.commit()
+
+    # WS 广播：新文件发布
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
+    except Exception:
+        pass
+
     return {"message": "发布成功"}
 
 
@@ -1345,7 +1414,7 @@ class PublishToUpdates(BaseModel):
 
 
 @router.post("/documents/{doc_id}/publish")
-def publish_document_to_updates(
+async def publish_document_to_updates(
     doc_id: int,
     data: PublishToUpdates,
     current_user: User = Depends(require_role("staff")),
@@ -1402,6 +1471,17 @@ def publish_document_to_updates(
     doc.published = True
 
     db.commit()
+
+    # WS 广播：文件已发布
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
+    except Exception:
+        pass
+
     return {"message": "发布成功"}
 
 
@@ -1656,6 +1736,17 @@ async def publish_with_file(
     )
     db.add(update)
     db.commit()
+
+    # WS 广播：带附件文件发布
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
+    except Exception:
+        pass
+
     return {"message": "发布成功"}
 
 
@@ -1732,7 +1823,7 @@ def get_timeline(
 
 
 @router.put("/timeline")
-def update_timeline(
+async def update_timeline(
     data: TimelineUpdate,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -1740,9 +1831,9 @@ def update_timeline(
     """更新时间线设置"""
     committee_id = get_staff_committee(current_user)
     from models.timeline import Timeline
-    
+
     timeline = db.query(Timeline).filter(Timeline.committee_id == committee_id).first()
-    
+
     # 解析日期
     new_date = None
     if data.conference_date:
@@ -1750,7 +1841,7 @@ def update_timeline(
             new_date = date_type.fromisoformat(data.conference_date)
         except ValueError:
             raise HTTPException(status_code=400, detail="日期格式错误，请使用 YYYY-MM-DD 格式")
-    
+
     if not timeline:
         # 创建新的时间线
         now = datetime.utcnow()
@@ -1764,32 +1855,44 @@ def update_timeline(
     else:
         # 更新现有时间线
         now = datetime.utcnow()
-        
+
         if new_date is not None or data.days_per_hour is not None:
             # 先根据当前流速计算到现在的会议日期
             elapsed_hours = (now - timeline.last_updated).total_seconds() / 3600
             elapsed_days = elapsed_hours * timeline.hours_per_day
             current_date = timeline.conference_date + timedelta(days=elapsed_days)
-            
+
             # 应用新的设置
             if new_date is not None:
                 timeline.conference_date = new_date
             else:
                 timeline.conference_date = current_date
-            
+
             if data.days_per_hour is not None:
                 timeline.hours_per_day = data.days_per_hour
-            
+
             timeline.last_updated = now
-    
+
     db.commit()
     db.refresh(timeline)
-    
+
     # 返回更新后的当前日期
     elapsed_hours = (datetime.utcnow() - timeline.last_updated).total_seconds() / 3600
     elapsed_days = elapsed_hours * timeline.hours_per_day
     current_date = timeline.conference_date + timedelta(days=elapsed_days)
-    
+
+    # WS 广播：时间线更新
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "timeline_changed",
+            "conference_date": timeline.conference_date.isoformat(),
+            "days_per_hour": timeline.hours_per_day,
+            "current_date": current_date.isoformat()
+        })
+    except Exception:
+        pass
+
     return {
         "conference_date": timeline.conference_date.isoformat(),
         "days_per_hour": timeline.hours_per_day,
