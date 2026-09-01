@@ -36,6 +36,11 @@
             <h3>发言计时器</h3>
             <span v-if="store.isSpeaking" class="live-badge">● LIVE</span>
           </div>
+          <!-- 动议主题 -->
+          <div v-if="store.activeMotion" class="timer-motion-topic">
+            <el-tag size="small" effect="plain">{{ getMotionTypeLabel(store.activeMotion.type) }}</el-tag>
+            <span class="timer-topic-text">{{ store.activeMotion.topic || '（无主题）' }}</span>
+          </div>
 
           <div class="timer-content">
             <!-- 当前发言者 -->
@@ -488,6 +493,16 @@ onUnmounted(() => {
 }
 .timer-header h3 { font-size: 16px; font-weight: 600; color: #0f172a; margin: 0; }
 .live-badge { font-size: 11px; color: #ef4444; font-weight: 700; animation: pulse 1.5s infinite; }
+
+.timer-motion-topic {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 24px; background: #f8fafc;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px; color: #475569;
+}
+.timer-motion-topic .timer-topic-text {
+  font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .timer-content { padding: 32px 24px; text-align: center; }
 

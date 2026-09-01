@@ -618,6 +618,16 @@ def create_motion(
     db: Session = Depends(get_db)
 ):
     committee_id = get_staff_committee(current_user)
+    # 自动结束上一动议
+    prev_motions = db.query(Motion).filter(
+        Motion.committee_id == committee_id,
+        Motion.status == "active"
+    ).all()
+    for prev in prev_motions:
+        prev.status = "ended"
+    if prev_motions:
+        db.commit()
+
     motion = Motion(
         committee_id=committee_id,
         type=data.type,
@@ -637,10 +647,19 @@ def create_motion(
     db.commit()
     db.refresh(motion)
 
-    # WebSocket 广播：动议变更
+    # WebSocket 广播：旧动议结束 + 新动议创建
     try:
         from services.websocket_manager import ws_manager
         import asyncio
+        for prev in prev_motions:
+            asyncio.run(
+                ws_manager.broadcast_committee(committee_id, {
+                    "type": "motion_changed",
+                    "action": "ended",
+                    "motion_id": prev.id
+                })
+            )
+        # 广播新动议
         asyncio.run(
             ws_manager.broadcast_committee(committee_id, {
                 "type": "motion_changed",
