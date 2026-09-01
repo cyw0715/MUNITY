@@ -1,7 +1,7 @@
 <template>
   <div class="staff-layout">
     <!-- 侧边栏 -->
-    <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+    <aside class="sidebar" v-if="!isFullscreen" :class="{ collapsed: sidebarCollapsed }">
       <div class="sidebar-brand">
         <div class="brand-icon-small">
           <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
