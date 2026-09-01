@@ -9,10 +9,11 @@ import { useWebSocket } from '../composables/useWebSocket'
  * 生命周期 = SPA 生命周期，不受路由切换影响
  * 
  * 计时器架构：服务端持久化作为基准时钟
- * - 控制端（点击开始的那个）每 1 秒推送状态到服务端
+ * - 控制端（点击开始的那个）每 200ms 推送状态到服务端
+ * - 服务端持久化到 DB 并 WS 广播给所有学团端
  * - 所有端（含控制端自己）收到 WS timer_sync 后更新显示
+ * - 远程端收到 running=true 时启动本地显示倒数（不推送）
  * - 页面切换后 loadFullState() 从服务端 GET timer-state 恢复
- * - 不调用 initTimer() 重置——尊重服务端持久化的真实状态
  */
 export const useMeetingStore = defineStore('meeting', () => {
   // ============ 状态 ============
@@ -29,10 +30,11 @@ export const useMeetingStore = defineStore('meeting', () => {
   const totalRemaining = ref(0)
   const elapsedSeconds = ref(0)
 
-  // 本地时钟：控制端在两次 sync 之间自行倒数
-  let timerInterval = null
-  let pushInterval = null
-  let isControlling = false  // 本端是否在控制计时器
+  // 本地时钟
+  let controllerTick = null     // 控制端每秒倒数
+  let controllerPush = null     // 控制端每 200ms 推送
+  let isControlling = false     // 本端是否在控制计时器
+  let displayTick = null        // 远程端本地显示倒数（不推送）
 
   // 发言记录
   const speechContent = ref('')
@@ -58,6 +60,34 @@ export const useMeetingStore = defineStore('meeting', () => {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
 
+  /** 本地一秒一跳（共用的倒数逻辑） */
+  function tickDown() {
+    elapsedSeconds.value++
+    if (totalRemaining.value > 0) {
+      totalRemaining.value--
+    }
+    if (unitRemaining.value > 0) {
+      unitRemaining.value--
+      if (unitRemaining.value === 0 && currentSpeaker.value) {
+        stopAllTicks()
+        ElMessage.warning('单位发言时间到！')
+        return
+      }
+    }
+    if (totalRemaining.value === 0 && activeMotion.value?.total_duration) {
+      stopAllTicks()
+      ElMessage.warning('总时长已耗尽！')
+    }
+  }
+
+  function stopAllTicks() {
+    timerRunning.value = false
+    if (controllerTick) { clearInterval(controllerTick); controllerTick = null }
+    if (controllerPush) { clearInterval(controllerPush); controllerPush = null }
+    if (displayTick) { clearInterval(displayTick); displayTick = null }
+    isControlling = false
+  }
+
   /** 从服务端同步计时器状态（用于 loadFullState 后恢复） */
   async function loadTimerState() {
     if (!activeMotion.value) return
@@ -73,9 +103,9 @@ export const useMeetingStore = defineStore('meeting', () => {
         totalRemaining.value = activeMotion.value.total_duration
         elapsedSeconds.value = 0
       }
-      // 如果服务端在运行但本端不在控制，不启动本地时钟
+      // 恢复后若服务端正在运行，启动远程显示倒数
       if (data.running && !isControlling) {
-        stopLocalTick()
+        startDisplayTick()
       }
     } catch (e) {
       // 网络错误时从 motion 配置初始化
@@ -100,64 +130,66 @@ export const useMeetingStore = defineStore('meeting', () => {
     } catch (e) {}
   }
 
-  /** 本地一秒一跳（控制端专用） */
+  // ============ 控制端 ============
+
+  /** 控制端：开始计时 */
   function startLocalTick() {
-    stopLocalTick()
+    stopAllTicks()
     isControlling = true
     timerRunning.value = true
-    pushTimerState()  // 立即推送
+    pushTimerState()  // 立即推送：其它端收到后启动 displayTick
 
-    // 前端本地每秒倒数，视觉响应更快
-    timerInterval = setInterval(() => {
-      elapsedSeconds.value++
+    controllerTick = setInterval(tickDown, 1000)
 
-      if (totalRemaining.value > 0) {
-        totalRemaining.value--
-      }
-      if (unitRemaining.value > 0) {
-        unitRemaining.value--
-        if (unitRemaining.value === 0) {
-          if (currentSpeaker.value) {
-            // 单位时间到，暂停
-            stopLocalTick()
-            ElMessage.warning('单位发言时间到！')
-          }
-        }
-      }
-      if (totalRemaining.value === 0 && activeMotion.value?.total_duration) {
-        stopLocalTick()
-        ElMessage.warning('总时长已耗尽！')
-      }
-    }, 1000)
-
-    // 每 200ms 推送到服务端（服务端状态误差 ≤200ms，切换页面回来后几乎无感）
-    pushInterval = setInterval(() => {
+    // 每 200ms 推送到服务端（服务端状态误差 ≤200ms）
+    controllerPush = setInterval(() => {
       pushTimerState()
     }, 200)
   }
 
+  /** 控制端：暂停 */
   function stopLocalTick() {
+    stopAllTicks()
+    pushTimerState()  // 推送停止状态：其它端收到后停止 displayTick
+  }
+
+  // ============ 远程端 ============
+
+  /** 远程端：启动本地显示倒数（只倒数不推送） */
+  function startDisplayTick() {
+    if (displayTick) return
+    timerRunning.value = true
+    displayTick = setInterval(() => {
+      tickDown()
+    }, 1000)
+  }
+
+  function stopDisplayTick() {
     timerRunning.value = false
-    if (timerInterval) {
-      clearInterval(timerInterval)
-      timerInterval = null
+    if (displayTick) {
+      clearInterval(displayTick)
+      displayTick = null
     }
-    if (pushInterval) {
-      clearInterval(pushInterval)
-      pushInterval = null
-    }
-    isControlling = false
-    pushTimerState()  // 推送停止状态
   }
 
   /** WS 收到远程 timer_sync 时调用 */
   function applyTimerSync(timer) {
-    // 只有不控制时才接受远程状态
-    if (isControlling) return
+    // 不论是不是控制端，都用服务端数值校准（控制端自身也校准，消除累积误差）
     unitRemaining.value = timer.unit_remaining
     totalRemaining.value = timer.total_remaining
     elapsedSeconds.value = timer.elapsed || 0
-    timerRunning.value = timer.running
+
+    if (isControlling) {
+      // 控制端：只接受服务端的数值校准，运行状态由自己控制
+      return
+    }
+
+    // 远程端：接受运行状态
+    if (timer.running) {
+      startDisplayTick()
+    } else {
+      stopDisplayTick()
+    }
   }
 
   // ============ WebSocket 监听 ============
@@ -245,7 +277,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     try {
       await api.put(`/api/staff/motions/${activeMotion.value.id}/status?status=ended`)
       ElMessage.success('动议已结束')
-      stopLocalTick()
+      stopAllTicks()
       activeMotion.value = null
       currentSpeaker.value = null
       speakersList.value = []
@@ -287,7 +319,7 @@ export const useMeetingStore = defineStore('meeting', () => {
   }
 
   async function endSpeaker() {
-    stopLocalTick()
+    stopAllTicks()
     if (currentSpeaker.value) {
       try {
         await api.put(`/api/staff/motions/${activeMotion.value.id}/speakers/${currentSpeaker.value.id}/end?duration=${elapsedSeconds.value}`)
@@ -346,12 +378,6 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   function applyMeetingUpdate(data) {
     switch (data.type) {
-      case 'speaker_changed':
-        currentSpeaker.value = data.speaker || null
-        break
-      case 'speakers_updated':
-        loadSpeakers()
-        break
       case 'timer_sync':
         if (data.motion_id === activeMotion.value?.id) {
           applyTimerSync(data.timer)
@@ -359,6 +385,12 @@ export const useMeetingStore = defineStore('meeting', () => {
         break
       case 'motion_changed':
         loadFullState()
+        break
+      case 'speaker_changed':
+        currentSpeaker.value = data.speaker || null
+        break
+      case 'speakers_updated':
+        loadSpeakers()
         break
       case 'agenda_changed':
         currentAgenda.value = data.agenda || null
@@ -369,7 +401,7 @@ export const useMeetingStore = defineStore('meeting', () => {
   // ============ 清理 ============
 
   function cleanup() {
-    stopLocalTick()
+    stopAllTicks()
     unregisterWebSocketListener()
   }
 
