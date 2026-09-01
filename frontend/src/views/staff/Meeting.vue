@@ -436,10 +436,11 @@ async function handleAddSpeaker() {
 onMounted(() => {
   store.loadFullState()
   loadMotionTypesConfig()
+  store.registerWebSocketListener()
 })
 
 onUnmounted(() => {
-  // 不清除 timer — 由 Pinia store 跨页面持有
+  // 保留 timer 和 WS 监听 — Pinia store 跨页面持有
 })
 </script>
 

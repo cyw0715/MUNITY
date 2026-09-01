@@ -819,6 +819,34 @@ def remove_speaker(
     return {"message": "移除成功"}
 
 
+@router.put("/motions/{motion_id}/timer-sync")
+def sync_timer(
+    motion_id: int,
+    data: dict,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """接收并广播计时器同步状态"""
+    committee_id = get_staff_committee(current_user)
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+            "type": "timer_sync",
+            "motion_id": motion_id,
+            "timer": {
+                "running": data.get("running", False),
+                "unit_remaining": data.get("unit_remaining", 0),
+                "total_remaining": data.get("total_remaining", 0),
+                "elapsed": data.get("elapsed", 0),
+                "sync_at": data.get("sync_at", "")
+            }
+        }))
+    except Exception:
+        pass
+    return {"message": "synced"}
+
+
 @router.put("/motions/{motion_id}/speakers/{speaker_id}/start")
 def start_speaking(
     motion_id: int,
@@ -835,6 +863,20 @@ def start_speaking(
         raise HTTPException(status_code=404, detail="发言者不存在")
     speaker.has_spoken = 0  # 标记为正在发言
     db.commit()
+
+    # WebSocket 广播：发言者变更
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        committee_id = get_staff_committee(current_user)
+        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+            "type": "speakers_updated",
+            "motion_id": motion_id,
+            "action": "started"
+        }))
+    except Exception:
+        pass
+
     return {"message": "已开始"}
 
 
@@ -867,6 +909,19 @@ def end_speaking(
     )
     db.add(record)
     db.commit()
+
+    # WebSocket 广播：发言结束
+    try:
+        from services.websocket_manager import ws_manager
+        import asyncio
+        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+            "type": "speakers_updated",
+            "motion_id": motion_id,
+            "action": "ended"
+        }))
+    except Exception:
+        pass
+
     return {"message": "已结束"}
 
 

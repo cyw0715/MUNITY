@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
+import { useWebSocket } from '../composables/useWebSocket'
 
 /**
  * 全局会议状态 Store
@@ -28,6 +29,7 @@ export const useMeetingStore = defineStore('meeting', () => {
   const totalRemaining = ref(0)
   const elapsedSeconds = ref(0)
   let timerInterval = null
+  let periodicSyncInterval = null
 
   // 发言记录
   const speechContent = ref('')
@@ -63,6 +65,22 @@ export const useMeetingStore = defineStore('meeting', () => {
     elapsedSeconds.value = 0
   }
 
+  /** 向服务端广播当前计时器状态 */
+  async function broadcastTimerState() {
+    if (!activeMotion.value) return
+    try {
+      await api.put(`/api/staff/motions/${activeMotion.value.id}/timer-sync`, {
+        running: timerRunning.value,
+        unit_remaining: unitRemaining.value,
+        total_remaining: totalRemaining.value,
+        elapsed: elapsedSeconds.value,
+        sync_at: Date.now()
+      })
+    } catch (e) {
+      // 静默失败
+    }
+  }
+
   function startTimer() {
     if (timerRunning.value) return
     timerRunning.value = true
@@ -88,6 +106,12 @@ export const useMeetingStore = defineStore('meeting', () => {
         ElMessage.warning('总时长已耗尽！')
       }
     }, 1000)
+    // 定时广播（每5秒同步一次）
+    periodicSyncInterval = setInterval(() => {
+      broadcastTimerState()
+    }, 5000)
+    // 立即广播一次
+    broadcastTimerState()
   }
 
   function pauseTimer() {
@@ -96,6 +120,12 @@ export const useMeetingStore = defineStore('meeting', () => {
       clearInterval(timerInterval)
       timerInterval = null
     }
+    if (periodicSyncInterval) {
+      clearInterval(periodicSyncInterval)
+      periodicSyncInterval = null
+    }
+    // 广播暂停状态
+    broadcastTimerState()
   }
 
   function resetUnitTimer() {
@@ -113,6 +143,27 @@ export const useMeetingStore = defineStore('meeting', () => {
       startTimer()
     } else if (!state.running && timerRunning.value) {
       pauseTimer()
+    }
+  }
+
+  // ============ WebSocket 监听 ============
+
+  let wsCleanup = null
+
+  function registerWebSocketListener() {
+    if (wsCleanup) return  // 已注册
+    const ws = useWebSocket()
+    const handler = (data) => {
+      applyMeetingUpdate(data)
+    }
+    ws.on('*', handler)
+    wsCleanup = () => ws.off('*', handler)
+  }
+
+  function unregisterWebSocketListener() {
+    if (wsCleanup) {
+      wsCleanup()
+      wsCleanup = null
     }
   }
 
@@ -147,7 +198,7 @@ export const useMeetingStore = defineStore('meeting', () => {
     try {
       const { data } = await api.get(`/api/staff/motions/${activeMotion.value.id}/speakers`)
       speakersList.value = data
-      currentSpeaker.value = data.find(s => !s.has_spoken) || data.find(s => !s.has_spoken) || null
+      currentSpeaker.value = data.find(s => s.has_spoken === 0) || null
     } catch (e) {}
   }
 
@@ -281,10 +332,14 @@ export const useMeetingStore = defineStore('meeting', () => {
         currentSpeaker.value = data.speaker || null
         break
       case 'speakers_updated':
-        speakersList.value = data.speakers || []
+        // 只刷新发言者列表，不重置当前发言者
+        loadSpeakers()
         break
       case 'timer_sync':
-        setTimerState(data.timer)
+        // 只有自己不运行计时器时才接受远程同步（避免抢断）
+        if (data.motion_id === activeMotion.value?.id && !timerRunning.value) {
+          setTimerState(data.timer)
+        }
         break
       case 'motion_changed':
         loadFullState()
@@ -299,6 +354,7 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   function cleanup() {
     pauseTimer()
+    unregisterWebSocketListener()
   }
 
   return {
@@ -316,7 +372,9 @@ export const useMeetingStore = defineStore('meeting', () => {
     selectSpeaker, saveSpeechContent, endSpeaker,
     addSpeaker, removeSpeaker,
     activateAgenda,
+    registerWebSocketListener, unregisterWebSocketListener,
     applyMeetingUpdate,
+    broadcastTimerState,
     cleanup
   }
 })
