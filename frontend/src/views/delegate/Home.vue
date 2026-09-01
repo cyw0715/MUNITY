@@ -83,6 +83,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../../api'
 import { Avatar, Edit, Document, Bell, ArrowRight } from '@element-plus/icons-vue'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const userInfo = ref(null)
 const stats = ref({ directives: 0, documents: 0, updates: 0 })
@@ -131,9 +132,15 @@ onMounted(async () => {
     timeline.value = tRes.data
   } catch (e) {}
   refreshTimer = setInterval(refreshTimeline, 60000)
+  const ws = useWebSocket()
+  ws.on('timeline_changed', refreshTimeline)
 })
 
-onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  const ws = useWebSocket()
+  ws.off('timeline_changed', refreshTimeline)
+})
 </script>
 
 <style scoped>

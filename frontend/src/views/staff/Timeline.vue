@@ -56,6 +56,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../api'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const timeline = ref(null)
 const form = ref({
@@ -122,9 +123,13 @@ const refreshTimeline = async () => {
 onMounted(() => {
   fetchTimeline()
   refreshTimer = setInterval(fetchTimeline, 60000)
+  const ws = useWebSocket()
+  ws.on('timeline_changed', fetchTimeline)
 })
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
+  const ws = useWebSocket()
+  ws.off('timeline_changed', fetchTimeline)
 })
 </script>

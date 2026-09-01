@@ -142,11 +142,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { Loading } from '@element-plus/icons-vue'
 import api from '../../api'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const updates = ref([])
 const keyword = ref('')
@@ -273,7 +274,15 @@ async function handleDelete(item) {
   }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  const ws = useWebSocket()
+  ws.on('updates_changed', loadData)
+})
+onUnmounted(() => {
+  const ws = useWebSocket()
+  ws.off('updates_changed', loadData)
+})
 </script>
 
 <style scoped>

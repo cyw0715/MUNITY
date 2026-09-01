@@ -231,10 +231,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import api from '../../api'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const keyword = ref('')
 const documents = ref([])
@@ -418,7 +419,15 @@ async function handleRestore(item) {
   }
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  const ws = useWebSocket()
+  ws.on('documents_changed', loadData)
+})
+onUnmounted(() => {
+  const ws = useWebSocket()
+  ws.off('documents_changed', loadData)
+})
 </script>
 
 <style scoped>

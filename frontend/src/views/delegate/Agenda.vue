@@ -31,8 +31,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import api from '../../api'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const agendaItems = ref([])
 
@@ -79,7 +80,15 @@ function buildTree(items) {
   return roots
 }
 
-onMounted(loadAgenda)
+onMounted(() => {
+  loadAgenda()
+  const ws = useWebSocket()
+  ws.on('agenda_changed', loadAgenda)
+})
+onUnmounted(() => {
+  const ws = useWebSocket()
+  ws.off('agenda_changed', loadAgenda)
+})
 </script>
 
 <style scoped>

@@ -58,9 +58,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import api from '../../api'
 import { Search } from '@element-plus/icons-vue'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const files = ref([])
 const keyword = ref('')
@@ -99,7 +100,17 @@ async function loadData() {
   } catch (e) {}
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  const ws = useWebSocket()
+  ws.on('updates_changed', loadData)
+  ws.on('documents_changed', loadData)
+})
+onUnmounted(() => {
+  const ws = useWebSocket()
+  ws.off('updates_changed', loadData)
+  ws.off('documents_changed', loadData)
+})
 </script>
 
 <style scoped>
