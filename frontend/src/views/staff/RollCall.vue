@@ -123,8 +123,8 @@ async function loadRollCall() {
 
 async function toggleDelegate(delegateId, currentState) {
   try {
-    await api.put(`/api/staff/rollcall/${delegateId}?is_present=${!currentState}`)
-    loadRollCall()
+    await api.put(`/api/staff/rollcall/${delegateId}`, { is_present: !currentState })
+    // 不调用 loadRollCall() — WS 会更新
   } catch (e) {
     ElMessage.error('更新失败')
   }

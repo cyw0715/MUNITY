@@ -521,11 +521,12 @@ def get_rollcall(current_user: User = Depends(require_role("staff")), db: Sessio
 @router.put("/rollcall/{delegate_id}")
 def update_delegate_rollcall(
     delegate_id: int,
-    is_present: bool,
+    data: dict,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
 ):
     """更新某个代表的出席状态"""
+    is_present = data.get("is_present", False)
     committee_id = get_staff_committee(current_user)
     delegate = db.query(User).filter(User.id == delegate_id, User.role == "delegate").first()
     if not delegate:
