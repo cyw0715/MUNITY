@@ -362,7 +362,15 @@ def download_file(
     filepath = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(filepath, filename=filename)
+    
+    # 提取原始文件名（去掉 uuid 前缀）
+    original_name = filename
+    if '_' in filename:
+        parts = filename.split('_', 1)
+        if len(parts) == 2 and len(parts[0]) == 32:
+            original_name = parts[1]
+    
+    return FileResponse(filepath, filename=original_name)
 
 
 # ==================== 议程查看 ====================

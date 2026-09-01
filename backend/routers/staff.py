@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -1699,9 +1699,9 @@ async def upload_file(
 
 @router.post("/publish-with-file")
 async def publish_with_file(
-    title: str,
-    doc_type: str = "declaration",
-    content: str = "",
+    title: str = Form(...),
+    doc_type: str = Form("declaration"),
+    content: str = Form(""),
     file: UploadFile = File(None),
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -1778,7 +1778,16 @@ def download_file(
     filepath = os.path.join(UPLOAD_DIR, filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="文件不存在")
-    return FileResponse(filepath, filename=filename)
+    
+    # 提取原始文件名（去掉 uuid 前缀）
+    original_name = filename
+    if '_' in filename:
+        # 格式: {uuid}_{original_name}
+        parts = filename.split('_', 1)
+        if len(parts) == 2 and len(parts[0]) == 32:
+            original_name = parts[1]
+    
+    return FileResponse(filepath, filename=original_name)
 
 
 # ==================== 时间线管理 ====================
