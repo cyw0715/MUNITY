@@ -187,8 +187,8 @@
               <el-option label="自由磋商" value="free_caucus" />
               <el-option label="轮席发言" value="speakers_list" />
             </el-option-group>
-            <el-option-group v-if="customMotionTypes.length" label="自定义类型">
-              <el-option v-for="mt in customMotionTypes" :key="mt.name" :label="mt.name" :value="mt.name" />
+            <el-option-group label="自定义类型">
+              <el-option v-for="mt in motionTypesConfig.filter(m => !m.is_builtin)" :key="mt.name" :label="mt.name" :value="mt.name" />
             </el-option-group>
           </el-select>
         </el-form-item>
@@ -279,23 +279,35 @@ import { useMeetingStore } from '../../stores/meeting'
 import api from '../../api'
 
 const store = useMeetingStore()
-const customMotionTypes = ref([])
+const motionTypesConfig = ref([])  // 所有类型（内置+自定义）
+const BUILTIN_KEYS = ['moderated_caucus', 'unmoderated_caucus', 'free_caucus', 'speakers_list']
+const BUILTIN_LABELS = { moderated_caucus: '有主持核心磋商', unmoderated_caucus: '自由辩论', free_caucus: '自由磋商', speakers_list: '轮席发言' }
 
-// 从 committee 接口加载自定义动议类型
-async function loadCustomMotionTypes() {
+// 从 committee 接口加载所有动议类型
+async function loadMotionTypesConfig() {
   try {
     const { data } = await api.get('/api/staff/committee')
-    customMotionTypes.value = data.motion_types || []
+    motionTypesConfig.value = data.motion_types || []
   } catch (e) {}
+}
+
+// 查找类型配置（内置类型用硬编码，自定义类型查列表）
+function findTypeConfig(type) {
+  if (BUILTIN_KEYS.includes(type)) {
+    // 先查数据库有没有覆盖的内置类型
+    const label = BUILTIN_LABELS[type]
+    const fromDb = motionTypesConfig.value.find(m => m.name === label)
+    if (fromDb) {
+      return { ...fromDb, need_speakers_list: fromDb.need_speakers_list ?? true, need_unit_duration: fromDb.need_unit_duration ?? true, need_total_duration: fromDb.need_total_duration ?? true }
+    }
+    return { need_speakers_list: true, need_unit_duration: true, need_total_duration: true }
+  }
+  return motionTypesConfig.value.find(m => m.name === type)
 }
 
 // 查找当前选中类型的配置
 const currentMotionTypeConfig = computed(() => {
-  const t = motionForm.value.type
-  // 内置类型 — 默认全部需要
-  const builtins = ['moderated_caucus', 'unmoderated_caucus', 'free_caucus', 'speakers_list']
-  if (builtins.includes(t)) return { need_speakers_list: true, need_unit_duration: true, need_total_duration: true }
-  return customMotionTypes.value.find(m => m.name === t)
+  return findTypeConfig(motionForm.value.type)
 })
 
 // 根据类型配置动态显示/隐藏时长字段
@@ -304,8 +316,8 @@ const motionTypeNeedsUnitDuration = computed(() => {
 })
 
 function onMotionTypeChange(newType) {
-  const config = customMotionTypes.value.find(m => m.name === newType)
-  if (config) {
+  const config = findTypeConfig(newType)
+  if (config && !BUILTIN_KEYS.includes(newType)) {
     if (config.default_unit_duration) motionForm.value.unit_duration = config.default_unit_duration
     if (config.default_total_duration) motionForm.value.total_duration = config.default_total_duration
   }
@@ -327,11 +339,10 @@ const selectedDelegateId = ref(null)
 
 const motionTypeLabels = { moderated_caucus: '有主持核心磋商', unmoderated_caucus: '自由辩论', free_caucus: '自由磋商', speakers_list: '轮席发言' }
 
-// 获取动议类型显示名称（支持自定义类型）
+// 获取动议类型显示名称（所有类型从 motionTypesConfig 中查）
 function getMotionTypeLabel(type) {
   if (motionTypeLabels[type]) return motionTypeLabels[type]
-  // 查自定义类型
-  const found = customMotionTypes.value.find(m => m.name === type)
+  const found = motionTypesConfig.value.find(m => m.name === type)
   return found ? found.name : type
 }
 
@@ -377,7 +388,7 @@ async function showMotionDialog() {
   motionForm.value = { type: 'moderated_caucus', topic: '', unit_duration: 60, total_duration: 300 }
   motionProposerDelegation.value = null
   motionProposerDelegate.value = null
-  await Promise.all([store.loadDelegates(), loadCustomMotionTypes()])
+  await Promise.all([store.loadDelegates(), loadMotionTypesConfig()])
   motionDialogVisible.value = true
 }
 
@@ -424,6 +435,7 @@ async function handleAddSpeaker() {
 
 onMounted(() => {
   store.loadFullState()
+  loadMotionTypesConfig()
 })
 
 onUnmounted(() => {

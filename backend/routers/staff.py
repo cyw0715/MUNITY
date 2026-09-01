@@ -483,6 +483,7 @@ def update_motion_types(
 
 
 # ==================== 点名 ====================
+@router.get("/rollcall")
 def get_rollcall(current_user: User = Depends(require_role("staff")), db: Session = Depends(get_db)):
     """获取当前委员会的点名状态（按代表统计，显示席位）"""
     committee_id = get_staff_committee(current_user)
