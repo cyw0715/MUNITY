@@ -53,10 +53,10 @@
                 {{ store.formattedUnitTime }}
               </div>
               <div class="timer-controls">
-                <button v-if="!store.timerRunning" class="ctrl-btn btn-start" @click="store.startTimer()">
+                <button v-if="!store.timerRunning" class="ctrl-btn btn-start" @click="store.startLocalTick()">
                   <el-icon><VideoPlay /></el-icon> 开始
                 </button>
-                <button v-else class="ctrl-btn btn-pause" @click="store.pauseTimer()">
+                <button v-else class="ctrl-btn btn-pause" @click="store.stopLocalTick()">
                   <el-icon><VideoPause /></el-icon> 暂停
                 </button>
                 <button class="ctrl-btn btn-end" @click="handleEndSpeaker">
@@ -89,10 +89,10 @@
                 <div class="big-timer">{{ store.formattedTotalTime }}</div>
               </div>
               <div class="timer-controls" style="margin-top: 16px;">
-                <button v-if="!store.timerRunning" class="ctrl-btn btn-start" @click="store.startTimer()">
+                <button v-if="!store.timerRunning" class="ctrl-btn btn-start" @click="store.startLocalTick()">
                   <el-icon><VideoPlay /></el-icon> 开始计时
                 </button>
-                <button v-else class="ctrl-btn btn-pause" @click="store.pauseTimer()">
+                <button v-else class="ctrl-btn btn-pause" @click="store.stopLocalTick()">
                   <el-icon><VideoPause /></el-icon> 暂停
                 </button>
               </div>

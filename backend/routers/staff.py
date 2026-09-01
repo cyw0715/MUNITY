@@ -598,7 +598,15 @@ def list_motions(current_user: User = Depends(require_role("staff")), db: Sessio
             "proposer_delegation_name": delegation.name if delegation else None,
             "proposer_delegate_id": m.proposer_delegate_id,
             "proposer_delegate_name": delegate.username if delegate else None,
-            "created_at": m.created_at.isoformat() if m.created_at else None
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            # 计时器服务端状态
+            "timer_running": bool(m.timer_running),
+            "timer_unit_remaining": m.timer_unit_remaining,
+            "timer_total_remaining": m.timer_total_remaining,
+            "timer_elapsed": m.timer_elapsed,
+            "timer_updated_at": m.timer_updated_at.isoformat() if m.timer_updated_at else None,
+            "timer_unit_duration": m.unit_duration,
+            "timer_total_duration": m.total_duration,
         })
     return result
 
@@ -819,6 +827,31 @@ def remove_speaker(
     return {"message": "移除成功"}
 
 
+@router.get("/motions/{motion_id}/timer-state")
+def get_timer_state(
+    motion_id: int,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """获取服务端持久化的计时器状态（用于页面切换后恢复）"""
+    committee_id = get_staff_committee(current_user)
+    motion = db.query(Motion).filter(
+        Motion.id == motion_id,
+        Motion.committee_id == committee_id
+    ).first()
+    if not motion:
+        raise HTTPException(status_code=404, detail="动议不存在")
+    return {
+        "running": bool(motion.timer_running),
+        "unit_remaining": motion.timer_unit_remaining,
+        "total_remaining": motion.timer_total_remaining,
+        "elapsed": motion.timer_elapsed,
+        "updated_at": motion.timer_updated_at.isoformat() if motion.timer_updated_at else None,
+        "unit_duration": motion.unit_duration,
+        "total_duration": motion.total_duration,
+    }
+
+
 @router.put("/motions/{motion_id}/timer-sync")
 def sync_timer(
     motion_id: int,
@@ -826,8 +859,19 @@ def sync_timer(
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
 ):
-    """接收并广播计时器同步状态"""
+    """接收、持久化并广播计时器同步状态（服务端作为基准时钟）"""
     committee_id = get_staff_committee(current_user)
+    motion = db.query(Motion).filter(
+        Motion.id == motion_id,
+        Motion.committee_id == committee_id
+    ).first()
+    if motion:
+        motion.timer_running = 1 if data.get("running", False) else 0
+        motion.timer_unit_remaining = data.get("unit_remaining", 0)
+        motion.timer_total_remaining = data.get("total_remaining", 0)
+        motion.timer_elapsed = data.get("elapsed", 0)
+        motion.timer_updated_at = datetime.now(timezone.utc)
+        db.commit()
     try:
         from services.websocket_manager import ws_manager
         import asyncio

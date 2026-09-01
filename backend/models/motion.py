@@ -17,6 +17,12 @@ class Motion(Base):
     proposer_delegation_id = Column(Integer, ForeignKey("delegations.id"), nullable=True)
     proposer_delegate_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    # 计时器服务端状态（持久化基准）
+    timer_running = Column(Integer, default=0)        # 0/1
+    timer_unit_remaining = Column(Integer, default=0)
+    timer_total_remaining = Column(Integer, default=0)
+    timer_elapsed = Column(Integer, default=0)
+    timer_updated_at = Column(DateTime, nullable=True)
 
     committee = relationship("Committee")
     speakers = relationship("SpeakerEntry", back_populates="motion")
