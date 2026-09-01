@@ -3,19 +3,22 @@
     <template #header>
       <div class="card-header">
         <span>局势更新</span>
-        <el-input
-          v-model="keyword"
-          placeholder="搜索标题"
-          clearable
-          style="width: 240px; margin: 0 12px"
-          @keyup.enter="handleSearch"
-          @clear="handleSearch"
-        >
-          <template #prefix>
-            <el-icon><Search /></el-icon>
-          </template>
-        </el-input>
-        <el-button type="primary" @click="showCreateDialog">发布更新</el-button>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <el-input
+            v-model="keyword"
+            placeholder="搜索标题、内容、附件…"
+            clearable
+            style="width: 240px"
+            @keyup.enter="handleSearch"
+            @clear="handleSearch"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-button type="primary" @click="handleSearch">搜索</el-button>
+          <el-button type="primary" @click="showCreateDialog">发布更新</el-button>
+        </div>
       </div>
     </template>
 
