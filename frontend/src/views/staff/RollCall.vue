@@ -19,7 +19,7 @@
           :name="delegation.delegation_id"
         >
           <template #title>
-            <div class="delegation-header" @click.stop>
+            <div class="delegation-header">
               <span class="delegation-name">{{ delegation.delegation_name }}</span>
               <el-tag size="small" :type="getDelegationStatus(delegation).type">
                 {{ getDelegationStatus(delegation).text }}
