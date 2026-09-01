@@ -67,12 +67,18 @@ export const useMeetingStore = defineStore('meeting', () => {
       unitRemaining.value = data.unit_remaining
       totalRemaining.value = data.total_remaining
       elapsedSeconds.value = data.elapsed
+      // 如果服务端返回全零但 motion 有配置，用配置值初始化（新建动议/旧数据）
+      if (!data.running && data.unit_remaining === 0 && data.total_remaining === 0 && activeMotion.value.unit_duration) {
+        unitRemaining.value = activeMotion.value.unit_duration
+        totalRemaining.value = activeMotion.value.total_duration
+        elapsedSeconds.value = 0
+      }
       // 如果服务端在运行但本端不在控制，不启动本地时钟
       if (data.running && !isControlling) {
         stopLocalTick()
       }
     } catch (e) {
-      // fallback: 从 motion 配置初始化
+      // 网络错误时从 motion 配置初始化
       unitRemaining.value = activeMotion.value.unit_duration || 0
       totalRemaining.value = activeMotion.value.total_duration || 0
       elapsedSeconds.value = 0
@@ -124,10 +130,10 @@ export const useMeetingStore = defineStore('meeting', () => {
       }
     }, 1000)
 
-    // 每 1 秒推送到服务端（服务端是基准）
+    // 每 200ms 推送到服务端（服务端状态误差 ≤200ms，切换页面回来后几乎无感）
     pushInterval = setInterval(() => {
       pushTimerState()
-    }, 1000)
+    }, 200)
   }
 
   function stopLocalTick() {

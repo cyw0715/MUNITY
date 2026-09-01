@@ -626,7 +626,12 @@ def create_motion(
         total_duration=data.total_duration,
         proposer_delegation_id=data.proposer_delegation_id,
         proposer_delegate_id=data.proposer_delegate_id,
-        status="active"
+        status="active",
+        # 初始化计时器状态为配置时长
+        timer_unit_remaining=data.unit_duration or 0,
+        timer_total_remaining=data.total_duration or 0,
+        timer_elapsed=0,
+        timer_running=0,
     )
     db.add(motion)
     db.commit()
@@ -656,7 +661,11 @@ def create_motion(
         "status": motion.status,
         "proposer_delegation_id": motion.proposer_delegation_id,
         "proposer_delegate_id": motion.proposer_delegate_id,
-        "created_at": motion.created_at.isoformat() if motion.created_at else None
+        "created_at": motion.created_at.isoformat() if motion.created_at else None,
+        "timer_running": False,
+        "timer_unit_remaining": motion.unit_duration or 0,
+        "timer_total_remaining": motion.total_duration or 0,
+        "timer_elapsed": 0,
     }
 
 
