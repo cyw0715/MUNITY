@@ -7,7 +7,7 @@
         <p>动议管理 · 发言计时 · 议程控制</p>
       </div>
       <div class="header-actions">
-        <el-button size="small" @click="showAgendaDialog">选择议程</el-button>
+        <el-button size="small" @click="showAgendaDialog">修改议程</el-button>
         <el-button type="primary" size="default" @click="showMotionDialog">新建动议</el-button>
       </div>
     </div>
@@ -252,8 +252,10 @@
       </template>
     </el-dialog>
 
-    <!-- ===== 议程选择对话框 ===== -->
-    <el-dialog v-model="agendaDialogVisible" title="选择议程" width="600px">
+    <!-- ===== 议程修改对话框 ===== -->
+    <el-dialog v-model="agendaDialogVisible" title="修改议程" width="600px">
+      <!-- 上半：选择现有议程 -->
+      <div style="margin-bottom: 8px; font-size: 13px; color: #64748b; font-weight: 600;">选择现有议程</div>
       <div class="agenda-select-list">
         <div
           v-for="item in store.agendaItems"
@@ -268,6 +270,24 @@
           <el-tag v-if="item.is_active" size="small" type="success" class="active-tag">当前</el-tag>
         </div>
       </div>
+
+      <!-- 下半：新增议程 -->
+      <el-divider style="margin: 16px 0 12px;" />
+      <div style="font-size: 13px; color: #64748b; font-weight: 600; margin-bottom: 8px;">新增议程</div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <el-input v-model="newAgendaTitle" placeholder="议程标题" size="small" style="flex: 1;" clearable />
+        <el-select v-model="newAgendaParentId" placeholder="父级（可选）" size="small" style="width: 180px;" clearable>
+          <el-option label="顶级议程" :value="null" />
+          <el-option
+            v-for="item in store.agendaItems"
+            :key="item.id"
+            :label="item.title"
+            :value="item.id"
+          />
+        </el-select>
+        <el-button type="primary" size="small" :disabled="!newAgendaTitle.trim()" @click="handleCreateAgenda">添加</el-button>
+      </div>
+
       <template #footer>
         <el-button @click="agendaDialogVisible = false">取消</el-button>
         <el-button type="primary" :disabled="!selectedAgendaId" @click="handleActivateAgenda">激活选中议程</el-button>
@@ -335,6 +355,8 @@ const addSpeakerDialogVisible = ref(false)
 const addLoading = ref(false)
 const agendaDialogVisible = ref(false)
 const selectedAgendaId = ref(null)
+const newAgendaTitle = ref('')
+const newAgendaParentId = ref(null)
 
 const motionForm = ref({ type: 'moderated_caucus', topic: '', unit_duration: 60, total_duration: 300 })
 const motionProposerDelegation = ref(null)
@@ -386,6 +408,38 @@ async function handleActivateAgenda() {
   if (!selectedAgendaId.value) return
   const ok = await store.activateAgenda(selectedAgendaId.value)
   if (ok) agendaDialogVisible.value = false
+}
+
+async function handleCreateAgenda() {
+  if (!newAgendaTitle.value.trim()) return
+  try {
+    // 计算层级和排序
+    let level = 1
+    let order = 0
+    if (newAgendaParentId.value) {
+      const parent = store.agendaItems.find(a => a.id === newAgendaParentId.value)
+      if (parent) {
+        level = parent.level + 1
+        // 同级最大 order + 1
+        const siblings = store.agendaItems.filter(a => a.level === level)
+        order = siblings.length > 0 ? Math.max(...siblings.map(a => a.order || 0)) + 1 : 0
+      }
+    } else {
+      const topLevel = store.agendaItems.filter(a => a.level === 1)
+      order = topLevel.length > 0 ? Math.max(...topLevel.map(a => a.order || 0)) + 1 : 0
+    }
+    await api.post('/api/staff/agenda', {
+      title: newAgendaTitle.value.trim(),
+      level,
+      order
+    })
+    ElMessage.success('议程已添加')
+    newAgendaTitle.value = ''
+    newAgendaParentId.value = null
+    await store.loadFullState()
+  } catch (e) {
+    ElMessage.error('添加议程失败')
+  }
 }
 
 // 动议操作
@@ -498,10 +552,10 @@ onUnmounted(() => {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 24px; background: #f8fafc;
   border-bottom: 1px solid #f1f5f9;
-  font-size: 13px; color: #475569;
+  font-size: 20px; color: #0f172a;
 }
 .timer-motion-topic .timer-topic-text {
-  font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .timer-content { padding: 32px 24px; text-align: center; }
