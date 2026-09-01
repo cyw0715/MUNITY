@@ -190,7 +190,6 @@
               <el-option label="有主持核心磋商" value="moderated_caucus" />
               <el-option label="自由辩论" value="unmoderated_caucus" />
               <el-option label="自由磋商" value="free_caucus" />
-              <el-option label="轮席发言" value="speakers_list" />
             </el-option-group>
             <el-option-group label="自定义类型">
               <el-option v-for="mt in motionTypesConfig.filter(m => !m.is_builtin)" :key="mt.name" :label="mt.name" :value="mt.name" />
@@ -305,8 +304,8 @@ import api from '../../api'
 
 const store = useMeetingStore()
 const motionTypesConfig = ref([])  // 所有类型（内置+自定义）
-const BUILTIN_KEYS = ['moderated_caucus', 'unmoderated_caucus', 'free_caucus', 'speakers_list']
-const BUILTIN_LABELS = { moderated_caucus: '有主持核心磋商', unmoderated_caucus: '自由辩论', free_caucus: '自由磋商', speakers_list: '轮席发言' }
+const BUILTIN_KEYS = ['moderated_caucus', 'unmoderated_caucus', 'free_caucus']
+const BUILTIN_LABELS = { moderated_caucus: '有主持核心磋商', unmoderated_caucus: '自由辩论', free_caucus: '自由磋商' }
 
 // 从 committee 接口加载所有动议类型
 async function loadMotionTypesConfig() {

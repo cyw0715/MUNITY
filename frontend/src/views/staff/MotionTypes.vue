@@ -103,7 +103,6 @@ const BUILTIN_TYPES = [
   { name: '有主持核心磋商', is_builtin: true, need_speakers_list: true, need_unit_duration: true, need_total_duration: true, default_unit_duration: 60, default_total_duration: 300 },
   { name: '自由辩论', is_builtin: true, need_speakers_list: true, need_unit_duration: true, need_total_duration: true, default_unit_duration: 60, default_total_duration: 300 },
   { name: '自由磋商', is_builtin: true, need_speakers_list: false, need_unit_duration: false, need_total_duration: true, default_unit_duration: 0, default_total_duration: 600 },
-  { name: '轮席发言', is_builtin: true, need_speakers_list: true, need_unit_duration: true, need_total_duration: true, default_unit_duration: 120, default_total_duration: 600 },
 ]
 
 const motionTypes = ref([])
