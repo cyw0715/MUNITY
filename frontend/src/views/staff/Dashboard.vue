@@ -50,8 +50,8 @@
           <span>动议类型</span>
         </el-menu-item>
 
-        <!-- 非对称消息 — 新菜单项 -->
-        <el-menu-item index="/staff/async-messages" class="menu-highlight">
+        <!-- 非对称消息 -->
+        <el-menu-item index="/staff/async-messages">
           <el-icon><Message /></el-icon>
           <span>非对称消息</span>
         </el-menu-item>
@@ -335,14 +335,14 @@ onUnmounted(() => {
 }
 .sidebar-menu .el-menu-item .el-icon {
   font-size: 18px;
-}
-
-/* 非对称消息高亮 */
-.sidebar-menu .menu-highlight .el-icon {
   color: #38bdf8;
+  transition: color var(--transition-fast);
 }
-.sidebar-menu .menu-highlight.is-active .el-icon {
+.sidebar-menu .el-menu-item.is-active .el-icon {
   color: #fff;
+}
+.sidebar-menu .el-menu-item:hover .el-icon {
+  color: #7dd3fc;
 }
 
 /* 通知红点 */

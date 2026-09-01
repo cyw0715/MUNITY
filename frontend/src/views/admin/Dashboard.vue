@@ -155,7 +155,9 @@ onUnmounted(() => document.removeEventListener('fullscreenchange', onFullscreenC
 }
 .sidebar-menu .el-menu-item:hover { background: #334155 !important; color: #e2e8f0 !important; }
 .sidebar-menu .el-menu-item.is-active { background: #5b92e5 !important; color: #fff !important; font-weight: 600; }
-.sidebar-menu .el-menu-item .el-icon { font-size: 18px; }
+.sidebar-menu .el-menu-item .el-icon { font-size: 18px; color: #38bdf8; transition: color var(--transition-fast); }
+.sidebar-menu .el-menu-item.is-active .el-icon { color: #fff; }
+.sidebar-menu .el-menu-item:hover .el-icon { color: #7dd3fc; }
 
 /* ===== 主区域 ===== */
 .main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
