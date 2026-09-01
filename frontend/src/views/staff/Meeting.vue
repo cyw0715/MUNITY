@@ -88,7 +88,15 @@
                 <span class="total-label">剩余总时长</span>
                 <div class="big-timer">{{ store.formattedTotalTime }}</div>
               </div>
-              <p class="no-speaker-hint">请从右侧发言名单中选择发言者</p>
+              <div class="timer-controls" style="margin-top: 16px;">
+                <button v-if="!store.timerRunning" class="ctrl-btn btn-start" @click="store.startTimer()">
+                  <el-icon><VideoPlay /></el-icon> 开始计时
+                </button>
+                <button v-else class="ctrl-btn btn-pause" @click="store.pauseTimer()">
+                  <el-icon><VideoPause /></el-icon> 暂停
+                </button>
+              </div>
+              <p class="no-speaker-hint">发言名单为空，计时器将在无发言者状态下倒数总时长</p>
             </div>
 
             <!-- 无动议 -->

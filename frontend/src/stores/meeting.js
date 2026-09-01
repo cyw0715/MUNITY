@@ -76,8 +76,11 @@ export const useMeetingStore = defineStore('meeting', () => {
       if (unitRemaining.value > 0) {
         unitRemaining.value--
         if (unitRemaining.value === 0) {
-          pauseTimer()
-          ElMessage.warning('单位发言时间到！')
+          // 有发言者时暂停（单位时间到），无发言者时继续倒计时总时长
+          if (currentSpeaker.value) {
+            pauseTimer()
+            ElMessage.warning('单位发言时间到！')
+          }
         }
       }
       if (totalRemaining.value === 0 && activeMotion.value?.total_duration) {
