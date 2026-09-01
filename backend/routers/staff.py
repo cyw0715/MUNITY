@@ -519,7 +519,7 @@ def get_rollcall(current_user: User = Depends(require_role("staff")), db: Sessio
 
 
 @router.put("/rollcall/{delegate_id}")
-def update_delegate_rollcall(
+async def update_delegate_rollcall(
     delegate_id: int,
     data: dict,
     current_user: User = Depends(require_role("staff")),
@@ -553,12 +553,11 @@ def update_delegate_rollcall(
     # WebSocket 广播：点名状态变更
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
-        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+        await ws_manager.broadcast_committee(committee_id, {
             "type": "rollcall_updated",
             "delegate_id": delegate_id,
             "is_present": is_present
-        }))
+        })
     except Exception:
         pass
 
@@ -626,7 +625,7 @@ def list_motions(current_user: User = Depends(require_role("staff")), db: Sessio
 
 
 @router.post("/motions")
-def create_motion(
+async def create_motion(
     data: MotionCreate,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -664,23 +663,18 @@ def create_motion(
     # WebSocket 广播：旧动议结束 + 新动议创建
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
         for prev in prev_motions:
-            asyncio.run(
-                ws_manager.broadcast_committee(committee_id, {
-                    "type": "motion_changed",
-                    "action": "ended",
-                    "motion_id": prev.id
-                })
-            )
-        # 广播新动议
-        asyncio.run(
-            ws_manager.broadcast_committee(committee_id, {
+            await ws_manager.broadcast_committee(committee_id, {
                 "type": "motion_changed",
-                "action": "created",
-                "motion_id": motion.id
+                "action": "ended",
+                "motion_id": prev.id
             })
-        )
+        # 广播新动议
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "motion_changed",
+            "action": "created",
+            "motion_id": motion.id
+        })
     except Exception:
         pass
 
@@ -703,7 +697,7 @@ def create_motion(
 
 
 @router.put("/motions/{motion_id}/status")
-def update_motion_status(
+async def update_motion_status(
     motion_id: int,
     status: str,
     current_user: User = Depends(require_role("staff")),
@@ -722,13 +716,12 @@ def update_motion_status(
     # WebSocket 广播
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
-        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+        await ws_manager.broadcast_committee(committee_id, {
             "type": "motion_changed",
             "action": "status_updated",
             "motion_id": motion_id,
             "status": status
-        }))
+        })
     except Exception:
         pass
 
@@ -790,7 +783,7 @@ def get_speakers(
 
 
 @router.post("/motions/{motion_id}/speakers")
-def add_speaker(
+async def add_speaker(
     motion_id: int,
     data: SpeakerAdd,
     current_user: User = Depends(require_role("staff")),
@@ -824,12 +817,11 @@ def add_speaker(
     # WebSocket 广播
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
-        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+        await ws_manager.broadcast_committee(committee_id, {
             "type": "speakers_updated",
             "motion_id": motion_id,
             "action": "added"
-        }))
+        })
     except Exception:
         pass
 
@@ -837,7 +829,7 @@ def add_speaker(
 
 
 @router.delete("/motions/{motion_id}/speakers/{speaker_id}")
-def remove_speaker(
+async def remove_speaker(
     motion_id: int,
     speaker_id: int,
     current_user: User = Depends(require_role("staff")),
@@ -856,13 +848,12 @@ def remove_speaker(
     # WebSocket 广播
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
         committee_id = get_staff_committee(current_user)
-        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+        await ws_manager.broadcast_committee(committee_id, {
             "type": "speakers_updated",
             "motion_id": motion_id,
             "action": "removed"
-        }))
+        })
     except Exception:
         pass
 
@@ -895,7 +886,7 @@ def get_timer_state(
 
 
 @router.put("/motions/{motion_id}/timer-sync")
-def sync_timer(
+async def sync_timer(
     motion_id: int,
     data: dict,
     current_user: User = Depends(require_role("staff")),
@@ -916,8 +907,7 @@ def sync_timer(
         db.commit()
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
-        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+        await ws_manager.broadcast_committee(committee_id, {
             "type": "timer_sync",
             "motion_id": motion_id,
             "timer": {
@@ -927,14 +917,14 @@ def sync_timer(
                 "elapsed": data.get("elapsed", 0),
                 "sync_at": data.get("sync_at", "")
             }
-        }))
+        })
     except Exception:
         pass
     return {"message": "synced"}
 
 
 @router.put("/motions/{motion_id}/speakers/{speaker_id}/start")
-def start_speaking(
+async def start_speaking(
     motion_id: int,
     speaker_id: int,
     current_user: User = Depends(require_role("staff")),
@@ -953,13 +943,12 @@ def start_speaking(
     # WebSocket 广播：发言者变更
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
         committee_id = get_staff_committee(current_user)
-        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+        await ws_manager.broadcast_committee(committee_id, {
             "type": "speakers_updated",
             "motion_id": motion_id,
             "action": "started"
-        }))
+        })
     except Exception:
         pass
 
@@ -967,7 +956,7 @@ def start_speaking(
 
 
 @router.put("/motions/{motion_id}/speakers/{speaker_id}/end")
-def end_speaking(
+async def end_speaking(
     motion_id: int,
     speaker_id: int,
     duration: int = 0,
@@ -999,12 +988,11 @@ def end_speaking(
     # WebSocket 广播：发言结束
     try:
         from services.websocket_manager import ws_manager
-        import asyncio
-        asyncio.run(ws_manager.broadcast_committee(committee_id, {
+        await ws_manager.broadcast_committee(committee_id, {
             "type": "speakers_updated",
             "motion_id": motion_id,
             "action": "ended"
-        }))
+        })
     except Exception:
         pass
 
