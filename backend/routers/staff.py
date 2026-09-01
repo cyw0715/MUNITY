@@ -672,6 +672,21 @@ async def create_motion(
     db.commit()
     db.refresh(motion)
 
+    # 自动将提出者加入发言名单
+    if data.proposer_delegation_id:
+        max_order = db.query(SpeakerEntry).filter(
+            SpeakerEntry.motion_id == motion.id
+        ).count()
+        speaker = SpeakerEntry(
+            motion_id=motion.id,
+            delegation_id=data.proposer_delegation_id,
+            delegate_id=data.proposer_delegate_id,
+            order=max_order + 1,
+            has_spoken=0
+        )
+        db.add(speaker)
+        db.commit()
+
     # WebSocket 广播：旧动议结束 + 新动议创建
     try:
         from services.websocket_manager import ws_manager
@@ -786,6 +801,7 @@ def get_speakers(
             "delegation_name": delegation.name if delegation else "未知",
             "delegate_id": s.delegate_id,
             "delegate_name": delegate.username if delegate else None,
+            "delegate_seat": delegate.seat if delegate else None,
             "order": s.order,
             "has_spoken": s.has_spoken,
             "created_at": s.created_at.isoformat() if s.created_at else None,
@@ -870,6 +886,44 @@ async def remove_speaker(
         pass
 
     return {"message": "移除成功"}
+
+
+# 发言名单重排序
+@router.put("/motions/{motion_id}/speakers/reorder")
+async def reorder_speakers(
+    motion_id: int,
+    data: dict,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """重排序发言名单：接收 speaker_ids 有序数组"""
+    speaker_ids = data.get("speaker_ids", [])
+    committee_id = get_staff_committee(current_user)
+    motion = db.query(Motion).filter(
+        Motion.id == motion_id,
+        Motion.committee_id == committee_id
+    ).first()
+    if not motion:
+        raise HTTPException(status_code=404, detail="动议不存在")
+
+    for idx, sid in enumerate(speaker_ids):
+        db.query(SpeakerEntry).filter(
+            SpeakerEntry.id == sid,
+            SpeakerEntry.motion_id == motion_id
+        ).update({"order": idx + 1})
+    db.commit()
+
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "speakers_updated",
+            "motion_id": motion_id,
+            "action": "reordered"
+        })
+    except Exception:
+        pass
+
+    return {"message": "排序成功"}
 
 
 @router.get("/motions/{motion_id}/timer-state")

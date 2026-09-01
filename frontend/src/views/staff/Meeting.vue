@@ -127,31 +127,43 @@
           </div>
 
           <div v-if="store.speakersList.length" class="speakers-list">
-            <div
-              v-for="(speaker, index) in store.speakersList"
-              :key="speaker.id"
-              class="speaker-row"
-              :class="{
-                active: index === 0 && !speaker.has_spoken,
-                spoken: speaker.has_spoken,
-                current: store.currentSpeaker?.id === speaker.id && store.timerRunning
-              }"
-              @click="handleSelectSpeaker(speaker)"
+            <draggable
+              v-model="store.speakersList"
+              :item-key="speaker => speaker.id"
+              handle=".drag-handle"
+              ghost-class="dragging-ghost"
+              :animation="200"
+              @change="handleReorder"
             >
-              <span class="spk-order">{{ index + 1 }}</span>
-              <span class="spk-flag" :style="{ background: getSpeakerColor(speaker.delegation_name) }"></span>
-              <span class="spk-name">{{ speaker.delegation_name }}</span>
-              <span v-if="speaker.delegate_name" class="spk-delegate">{{ speaker.delegate_name }}</span>
-              <span v-if="speaker.has_spoken" class="spk-status">
-                <el-tag size="small" type="info" round>{{ speaker.duration }}s</el-tag>
-              </span>
-              <span v-else-if="index === 0" class="spk-status">
-                <span class="active-badge">当前</span>
-              </span>
-              <button class="spk-remove" @click.stop="store.removeSpeaker(speaker.id)" title="移除">
-                <el-icon><Close /></el-icon>
-              </button>
-            </div>
+              <template #item="{ element: speaker, index }">
+                <div
+                  class="speaker-row"
+                  :class="{
+                    active: index === 0 && !speaker.has_spoken,
+                    spoken: speaker.has_spoken,
+                    current: store.currentSpeaker?.id === speaker.id && store.timerRunning
+                  }"
+                  @click="handleSelectSpeaker(speaker)"
+                >
+                  <span class="drag-handle" title="拖拽调整顺序">
+                    <el-icon><Operation /></el-icon>
+                  </span>
+                  <span class="spk-order">{{ index + 1 }}</span>
+                  <span class="spk-flag" :style="{ background: getSpeakerColor(speaker.delegation_name) }"></span>
+                  <span class="spk-name">{{ speaker.delegation_name }}</span>
+                  <span v-if="speaker.delegate_seat" class="spk-delegate">{{ speaker.delegate_seat }}</span>
+                  <span v-if="speaker.has_spoken" class="spk-status">
+                    <el-tag size="small" type="info" round>{{ speaker.duration }}s</el-tag>
+                  </span>
+                  <span v-else-if="index === 0" class="spk-status">
+                    <span class="active-badge">当前</span>
+                  </span>
+                  <button class="spk-remove" @click.stop="store.removeSpeaker(speaker.id)" title="移除">
+                    <el-icon><Close /></el-icon>
+                  </button>
+                </div>
+              </template>
+            </draggable>
           </div>
           <div v-else class="speakers-empty">
             <el-empty description="发言名单为空" :image-size="80" />
@@ -298,9 +310,10 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { VideoPlay, VideoPause, CircleClose, Plus, Close, Edit, Microphone } from '@element-plus/icons-vue'
+import { VideoPlay, VideoPause, CircleClose, Plus, Close, Edit, Microphone, Operation } from '@element-plus/icons-vue'
 import { useMeetingStore } from '../../stores/meeting'
 import api from '../../api'
+import draggable from 'vuedraggable'
 
 const store = useMeetingStore()
 const motionTypesConfig = ref([])  // 所有类型（内置+自定义）
@@ -439,6 +452,14 @@ async function handleCreateAgenda() {
   } catch (e) {
     ElMessage.error('添加议程失败')
   }
+}
+
+async function handleReorder() {
+  const ids = store.speakersList.map(s => s.id)
+  if (!store.activeMotion || ids.length === 0) return
+  try {
+    await api.put(`/api/staff/motions/${store.activeMotion.id}/speakers/reorder`, { speaker_ids: ids })
+  } catch (e) {}
 }
 
 // 动议操作
@@ -635,14 +656,23 @@ onUnmounted(() => {
 .speakers-list { max-height: 340px; overflow-y: auto; padding: 4px 0; }
 
 .speaker-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 16px; cursor: pointer; transition: all 0.15s;
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 12px; cursor: pointer; transition: all 0.15s;
   border-left: 3px solid transparent;
 }
 .speaker-row:hover { background: #f8fafc; }
 .speaker-row.active { background: #f0fdf4; border-left-color: #22c55e; }
 .speaker-row.current { background: #edf3fb; border-left-color: #5b92e5; }
 .speaker-row.spoken { opacity: 0.55; }
+
+.drag-handle {
+  cursor: grab; color: #cbd5e1; display: flex; align-items: center;
+  font-size: 14px; flex-shrink: 0; line-height: 1;
+  padding: 2px 2px 2px 0;
+}
+.drag-handle:hover { color: #64748b; }
+.drag-handle:active { cursor: grabbing; }
+.dragging-ghost { opacity: 0.3; }
 
 .spk-order {
   width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
