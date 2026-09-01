@@ -34,7 +34,32 @@
             <span class="progress-label">已投票</span>
             <span class="progress-value">{{ activeVote.voted }} / {{ activeVote.can_vote }}</span>
           </div>
-          <el-progress :percentage="voteProgress" :stroke-width="20" :text-inside="true" />
+          <div class="segmented-bar">
+            <div
+              v-if="yesPct > 0"
+              class="seg-bar-yes"
+              :style="{ width: yesPct + '%' }"
+            >
+              <span v-if="yesPct >= 12" class="seg-label">赞成 {{ yesPct }}%</span>
+            </div>
+            <div
+              v-if="noPct > 0"
+              class="seg-bar-no"
+              :style="{ width: noPct + '%' }"
+            >
+              <span v-if="noPct >= 12" class="seg-label">反对 {{ noPct }}%</span>
+            </div>
+            <div
+              v-if="abstainPct > 0"
+              class="seg-bar-abstain"
+              :style="{ width: abstainPct + '%' }"
+            >
+              <span v-if="abstainPct >= 12" class="seg-label">弃权 {{ abstainPct }}%</span>
+            </div>
+          </div>
+          <div v-if="yesPct > 0 && yesPct < 12" class="seg-label-outside yes-outside">赞成 {{ yesPct }}%</div>
+          <div v-if="noPct > 0 && noPct < 12" class="seg-label-outside no-outside">反对 {{ noPct }}%</div>
+          <div v-if="abstainPct > 0 && abstainPct < 12" class="seg-label-outside abstain-outside">弃权 {{ abstainPct }}%</div>
         </div>
 
         <!-- 投票统计 -->
@@ -283,6 +308,28 @@ const voteProgress = computed(() => {
   return Math.round((activeVote.value.voted / activeVote.value.can_vote) * 100)
 })
 
+const votedTotal = computed(() => {
+  if (!activeVote.value) return 0
+  return (activeVote.value.yes_count || 0) + (activeVote.value.no_count || 0) + (activeVote.value.abstain_count || 0)
+})
+
+const yesPct = computed(() => {
+  if (!activeVote.value || !votedTotal.value) return 0
+  return Math.round(((activeVote.value.yes_count || 0) / votedTotal.value) * 100)
+})
+
+const noPct = computed(() => {
+  if (!activeVote.value || !votedTotal.value) return 0
+  return Math.round(((activeVote.value.no_count || 0) / votedTotal.value) * 100)
+})
+
+const abstainPct = computed(() => {
+  if (!activeVote.value || !votedTotal.value) return 0
+  const pct = Math.round(((activeVote.value.abstain_count || 0) / votedTotal.value) * 100)
+  const remaining = 100 - yesPct.value - noPct.value
+  return remaining > 0 ? remaining : pct
+})
+
 async function loadData() {
   try {
     const [vRes, dRes] = await Promise.all([
@@ -425,7 +472,7 @@ onMounted(loadData)
   color: #606266;
   margin-bottom: 16px;
 }
-
+/* 投票进度 - 色块占比条 */
 .vote-progress {
   margin-bottom: 24px;
 }
@@ -443,6 +490,59 @@ onMounted(loadData)
 .progress-value {
   font-weight: 500;
 }
+
+.segmented-bar {
+  display: flex;
+  height: 28px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #ebeef5;
+  margin-bottom: 4px;
+}
+
+.seg-bar-yes {
+  background: linear-gradient(135deg, #67c23a, #85ce61);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.3s ease;
+  min-width: 0;
+}
+
+.seg-bar-no {
+  background: linear-gradient(135deg, #f56c6c, #f89898);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.3s ease;
+  min-width: 0;
+}
+
+.seg-bar-abstain {
+  background: linear-gradient(135deg, #e6a23c, #f0c78a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.3s ease;
+  min-width: 0;
+}
+
+.seg-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.seg-label-outside {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.seg-label-outside.yes-outside { color: #67c23a; }
+.seg-label-outside.no-outside { color: #f56c6c; }
+.seg-label-outside.abstain-outside { color: #e6a23c; }
 
 .vote-stats {
   display: flex;
