@@ -48,13 +48,13 @@ export function useWebSocket() {
             listeners.get('*').forEach(cb => cb(data))
           }
 
-          // 新消息通知
+          // 新消息通知 — 常驻直到用户点击关闭
           if (data.type === 'new_async_message') {
             ElNotification({
               title: '新的非对称消息',
               message: data.message?.title || '你收到了一条非对称消息',
               type: 'info',
-              duration: 5000
+              duration: 0
             })
           }
         } catch (e) {

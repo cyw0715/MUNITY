@@ -131,15 +131,32 @@ onMounted(async () => {
     stats.value.updates = uRes.data.length
     timeline.value = tRes.data
   } catch (e) {}
-  refreshTimer = setInterval(refreshTimeline, 60000)
+  refreshTimer = setInterval(refreshTimeline, 1000)
   const ws = useWebSocket()
   ws.on('timeline_changed', refreshTimeline)
+  ws.on('documents_changed', refreshStats)
+  ws.on('updates_changed', refreshStats)
 })
+
+async function refreshStats() {
+  try {
+    const [dRes, docRes, uRes] = await Promise.all([
+      api.get('/api/delegate/directives'),
+      api.get('/api/delegate/documents'),
+      api.get('/api/delegate/updates')
+    ])
+    stats.value.directives = dRes.data.length
+    stats.value.documents = docRes.data.length
+    stats.value.updates = uRes.data.length
+  } catch (e) {}
+}
 
 onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
   const ws = useWebSocket()
   ws.off('timeline_changed', refreshTimeline)
+  ws.off('documents_changed', refreshStats)
+  ws.off('updates_changed', refreshStats)
 })
 </script>
 

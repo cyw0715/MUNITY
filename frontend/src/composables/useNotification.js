@@ -55,10 +55,11 @@ export function useNotification(role) {
         const newUpdates = uRes.data.filter(u => u.type === 'text').length
 
         // 只在初始化后才比较（避免首次加载就闪动）
+        // 使用 || 保证 WS 触发的通知不会被轮询覆盖
         if (initialized) {
-          notifications.value.directives = newDirectives > lastCounts.value.directives
-          notifications.value.documents = newDocuments > lastCounts.value.documents
-          notifications.value.updates = newUpdates > lastCounts.value.updates
+          notifications.value.directives = notifications.value.directives || (newDirectives > lastCounts.value.directives)
+          notifications.value.documents = notifications.value.documents || (newDocuments > lastCounts.value.documents)
+          notifications.value.updates = notifications.value.updates || (newUpdates > lastCounts.value.updates)
         }
 
         lastCounts.value.directives = newDirectives
@@ -77,12 +78,13 @@ export function useNotification(role) {
         const newMeetingFiles = mRes.data.length
         const newMessages = msgRes.data.count || 0
         const newEndorsements = Array.isArray(endRes.data) ? endRes.data.length : 0
-
+        // 只在初始化后才比较（避免首次加载就闪动）
+        // 使用 || 保证 WS 触发的通知不会被轮询覆盖
         if (initialized) {
-          notifications.value.updates = newUpdates > lastCounts.value.updates
-          notifications.value.meetingFiles = newMeetingFiles > lastCounts.value.meetingFiles
-          notifications.value.messages = newMessages > lastCounts.value.messages
-          notifications.value.endorsements = newEndorsements > lastCounts.value.endorsements
+          notifications.value.updates = notifications.value.updates || (newUpdates > lastCounts.value.updates)
+          notifications.value.meetingFiles = notifications.value.meetingFiles || (newMeetingFiles > lastCounts.value.meetingFiles)
+          notifications.value.messages = notifications.value.messages || (newMessages > lastCounts.value.messages)
+          notifications.value.endorsements = notifications.value.endorsements || (newEndorsements > lastCounts.value.endorsements)
         }
 
         lastCounts.value.updates = newUpdates
