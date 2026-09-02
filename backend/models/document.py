@@ -18,4 +18,6 @@ class Document(Base):
     secrecy = Column(String(20), default="public")  # public / secret（协定专用）
     published = Column(Boolean, default=False)  # 是否已发布
     recalled = Column(Boolean, default=False)  # 是否已撤回
+    endorsing_delegations = Column(JSON, nullable=True)  # 联署代表团ID列表
+    endorsement_data = Column(JSON, nullable=True)  # { del_id: {status: "pending"|"approved"|"rejected", note: "", updated_at: ""} }
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

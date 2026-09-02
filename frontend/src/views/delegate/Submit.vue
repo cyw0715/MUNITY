@@ -45,11 +45,8 @@
               <el-select v-model="documentForm.doc_type" style="width: 100%" @change="onDocTypeChange">
                 <el-option label="声明" value="declaration" />
                 <el-option label="备忘录" value="memorandum" />
-                <el-option label="协定" value="agreement" :disabled="!userInfo?.is_leader" />
+                <el-option label="协定" value="agreement" />
               </el-select>
-              <span v-if="!userInfo?.is_leader" style="color: #f56c6c; font-size: 12px; margin-left: 8px">
-                只有阁首才能提交协定
-              </span>
             </el-form-item>
 
             <!-- 协定专属字段 -->
@@ -66,6 +63,25 @@
                 </el-radio-group>
               </el-form-item>
             </template>
+
+            <!-- 联署代表团 -->
+            <el-form-item
+              :label="'联署代表团' + (documentForm.doc_type === 'agreement' ? '（必选）' : '（可选）')"
+              :prop="documentForm.doc_type === 'agreement' ? 'endorsing_delegations' : ''"
+            >
+              <el-select v-model="documentForm.endorsing_delegations" multiple placeholder="选择需要联署的代表团" style="width: 100%">
+                <el-option
+                  v-for="d in availableEndorsingDelegations"
+                  :key="d.id"
+                  :label="d.name"
+                  :value="d.id"
+                  :disabled="d.id === myDelegationId"
+                />
+              </el-select>
+              <span style="color: #909399; font-size: 12px; margin-top: 4px; display: block">
+                所选联署国阁首将收到审批通知，全部通过后方可由学团发布
+              </span>
+            </el-form-item>
 
             <el-form-item label="标题" prop="title">
               <el-input v-model="documentForm.title" />
@@ -242,7 +258,13 @@ const documentForm = ref({
   title: '',
   content: '',
   signing_countries: [],
-  secrecy: 'public'
+  secrecy: 'public',
+  endorsing_delegations: []
+})
+
+const myDelegationId = ref(null)
+const availableEndorsingDelegations = computed(() => {
+  return allDelegations.value.filter(d => d.id !== myDelegationId.value)
 })
 
 const directiveRules = {
@@ -279,6 +301,7 @@ function getSigningCountryNames(ids) {
 function onDocTypeChange() {
   documentForm.value.signing_countries = []
   documentForm.value.secrecy = 'public'
+  documentForm.value.endorsing_delegations = []
 }
 
 function showDocumentDetail(doc) {
@@ -298,6 +321,7 @@ async function loadData() {
     myDirectives.value = dRes.data
     myDocuments.value = docRes.data
     allDelegations.value = delRes.data
+    myDelegationId.value = meRes.data.delegation_id
   } catch (e) {}
 }
 
@@ -332,6 +356,11 @@ function handleFileChange(file) {
 }
 
 async function submitDocument() {
+  // 协定必须选择联署代表团
+  if (documentForm.value.doc_type === 'agreement' && (!documentForm.value.endorsing_delegations?.length)) {
+    ElMessage.warning('协定必须选择联署代表团')
+    return
+  }
   await documentFormRef.value.validate()
   loading.value = true
   try {
@@ -344,6 +373,9 @@ async function submitDocument() {
     if (documentForm.value.signing_countries?.length) {
       formData.append('signing_countries', JSON.stringify(documentForm.value.signing_countries))
     }
+    if (documentForm.value.endorsing_delegations?.length) {
+      formData.append('endorsing_delegations', JSON.stringify(documentForm.value.endorsing_delegations))
+    }
     if (selectedFile.value) {
       formData.append('file', selectedFile.value)
     }
@@ -352,7 +384,7 @@ async function submitDocument() {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     ElMessage.success('文件提交成功')
-    documentForm.value = { drafter: '', doc_type: 'declaration', title: '', content: '', signing_countries: [], secrecy: 'public' }
+    documentForm.value = { drafter: '', doc_type: 'declaration', title: '', content: '', signing_countries: [], secrecy: 'public', endorsing_delegations: [] }
     selectedFile.value = null
     if (uploadRef.value) uploadRef.value.clearFiles()
     loadData()

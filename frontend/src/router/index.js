@@ -55,7 +55,8 @@ const routes = [
       { path: 'async-messages', name: 'DelegateAsyncMessages', component: () => import('../views/delegate/AsyncMessages.vue') },
       { path: 'agenda', name: 'DelegateAgenda', component: () => import('../views/delegate/Agenda.vue') },
       { path: 'updates', name: 'DelegateUpdates', component: () => import('../views/delegate/Updates.vue') },
-      { path: 'meeting-files', name: 'DelegateMeetingFiles', component: () => import('../views/delegate/MeetingFiles.vue') }
+      { path: 'meeting-files', name: 'DelegateMeetingFiles', component: () => import('../views/delegate/MeetingFiles.vue') },
+      { path: 'endorsements', name: 'DelegateEndorsements', component: () => import('../views/delegate/Endorsements.vue') }
     ]
   },
   { path: '/', redirect: '/login' }

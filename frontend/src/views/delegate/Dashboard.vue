@@ -44,6 +44,10 @@
           <span>会议文件</span>
           <span v-if="notifications.meetingFiles" class="notif-dot" />
         </el-menu-item>
+        <el-menu-item index="/delegate/endorsements">
+          <el-icon><Select /></el-icon>
+          <span>联署审批</span>
+        </el-menu-item>
       </el-menu>
     </aside>
 
@@ -96,7 +100,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
-import { HomeFilled, Edit, Bell, Folder, ArrowDown, FullScreen, Aim, Back, List, Message, Edit as EditIcon, SwitchButton } from '@element-plus/icons-vue'
+import { HomeFilled, Edit, Bell, Folder, ArrowDown, FullScreen, Aim, Back, List, Message, Edit as EditIcon, SwitchButton, Select } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import { useNotification } from '../../composables/useNotification'

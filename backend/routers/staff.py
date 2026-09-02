@@ -1304,6 +1304,20 @@ def list_documents(
                 c = db.query(Delegation).filter(Delegation.id == cid).first()
                 if c:
                     signing_names.append(c.name)
+        # 解析联署状态
+        endorsements_info = []
+        endorsement_data = d.endorsement_data or {}
+        if d.endorsing_delegations:
+            for ed_id in (d.endorsing_delegations or []):
+                del_obj = db.query(Delegation).filter(Delegation.id == int(ed_id)).first()
+                edata = endorsement_data.get(str(ed_id), {})
+                endorsements_info.append({
+                    "delegation_id": int(ed_id),
+                    "delegation_name": del_obj.name if del_obj else f"ID:{ed_id}",
+                    "status": edata.get("status", "pending"),
+                    "note": edata.get("note", ""),
+                    "updated_at": edata.get("updated_at", "")
+                })
         result.append({
             "id": d.id,
             "type": "document",
@@ -1320,6 +1334,9 @@ def list_documents(
             "secrecy": d.secrecy or "public",
             "published": d.published or False,
             "recalled": d.recalled or False,
+            "endorsing_delegations": d.endorsing_delegations or [],
+            "endorsement_data": d.endorsement_data or {},
+            "endorsements_info": endorsements_info,
             "created_at": d.created_at.isoformat() if d.created_at else None
         })
     

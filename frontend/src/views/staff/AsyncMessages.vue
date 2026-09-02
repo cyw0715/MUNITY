@@ -4,7 +4,7 @@
     <div class="page-header">
       <div>
         <h2>非对称消息</h2>
-        <p>危机联动核心通信系统 — 支持公开、代表团和私密消息</p>
+        <p>危机联动核心通信系统</p>
       </div>
       <el-button type="primary" size="large" @click="showCreateDialog">
         <el-icon><Plus /></el-icon>发送消息

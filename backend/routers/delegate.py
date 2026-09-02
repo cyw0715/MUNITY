@@ -105,6 +105,7 @@ async def submit_document(
     content: str = Form(""),
     secrecy: str = Form("public"),
     signing_countries: str = Form("[]"),
+    endorsing_delegations: str = Form("[]"),
     file: UploadFile = File(None),
     current_user: User = Depends(require_role("delegate")),
     db: Session = Depends(get_db)
@@ -123,12 +124,21 @@ async def submit_document(
 
     # 协定特殊验证
     if doc_type == "agreement":
-        # 只有阁首能提交协定
-        if not current_user.is_leader:
-            raise HTTPException(status_code=403, detail="只有阁首才能提交协定")
         # 协定必须有签署国家
         if not signing_countries_list:
             raise HTTPException(status_code=400, detail="协定必须选择签署国家")
+
+    # 解析联署代表团
+    endorsing_list = json.loads(endorsing_delegations) if endorsing_delegations else []
+    endorsement_data = {}
+    now_str = datetime.utcnow().isoformat()
+    if endorsing_list:
+        for ed_id in endorsing_list:
+            endorsement_data[str(ed_id)] = {"status": "pending", "note": "", "updated_at": now_str}
+
+    # 协定必须有联署
+    if doc_type == "agreement" and not endorsing_list:
+        raise HTTPException(status_code=400, detail="协定必须选择联署代表团")
 
     # 处理文件上传
     file_path = None
@@ -151,7 +161,9 @@ async def submit_document(
         content=content,
         file_path=file_path,
         signing_countries=signing_countries_list if doc_type == "agreement" else None,
-        secrecy=secrecy if doc_type == "agreement" else "public"
+        secrecy=secrecy if doc_type == "agreement" else "public",
+        endorsing_delegations=endorsing_list if endorsing_list else None,
+        endorsement_data=endorsement_data if endorsement_data else None
     )
     db.add(document)
     db.commit()
@@ -165,6 +177,118 @@ def list_my_documents(current_user: User = Depends(require_role("delegate")), db
         Document.delegation_id == delegation_id,
         Document.recalled == False  # 过滤掉已撤回的文件
     ).order_by(Document.created_at.desc()).all()
+
+
+# ==================== 联署管理 ====================
+
+@router.get("/endorsements")
+def list_endorsements(
+    current_user: User = Depends(require_role("delegate")),
+    db: Session = Depends(get_db)
+):
+    """获取当前代表需要审批的联署列表（仅阁首）"""
+    if not current_user.is_leader:
+        raise HTTPException(status_code=403, detail="只有阁首才能查看联署审批")
+    
+    delegation_id = get_delegate_info(current_user)
+    delegation = db.query(Delegation).filter(Delegation.id == delegation_id).first()
+    
+    documents = db.query(Document).filter(
+        Document.committee_id == delegation.committee_id,
+        Document.endorsing_delegations != None,
+        Document.recalled == False,
+        Document.published == False
+    ).all()
+    
+    result = []
+    for d in documents:
+        ed_ids = d.endorsing_delegations or []
+        if delegation_id not in ed_ids:
+            continue
+        del_obj = db.query(Delegation).filter(Delegation.id == d.delegation_id).first()
+        endorsement_data = d.endorsement_data or {}
+        my_status = endorsement_data.get(str(delegation_id), {})
+        result.append({
+            "id": d.id,
+            "title": d.title,
+            "doc_type": d.doc_type,
+            "drafter": d.drafter,
+            "delegation_name": del_obj.name if del_obj else "未知",
+            "content": d.content,
+            "file_path": d.file_path,
+            "signing_countries": d.signing_countries or [],
+            "secrecy": d.secrecy or "public",
+            "status": my_status.get("status", "pending"),
+            "note": my_status.get("note", ""),
+            "updated_at": my_status.get("updated_at", ""),
+            "created_at": d.created_at.isoformat() if d.created_at else None
+        })
+    return result
+
+
+@router.put("/endorsements/{doc_id}")
+def review_endorsement(
+    doc_id: int,
+    data: dict,
+    current_user: User = Depends(require_role("delegate")),
+    db: Session = Depends(get_db)
+):
+    """阁首审批联署：通过或拒绝"""
+    if not current_user.is_leader:
+        raise HTTPException(status_code=403, detail="只有阁首才能审批联署")
+    delegation_id = get_delegate_info(current_user)
+    status = data.get("status")
+    note = data.get("note", "")
+    if status not in ("approved", "rejected"):
+        raise HTTPException(status_code=400, detail="状态必须为 approved 或 rejected")
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    if delegation_id not in (doc.endorsing_delegations or []):
+        raise HTTPException(status_code=403, detail="当前代表团不在联署名单中")
+    endorsement_data = doc.endorsement_data or {}
+    endorsement_data[str(delegation_id)] = {"status": status, "note": note, "updated_at": datetime.utcnow().isoformat()}
+    doc.endorsement_data = endorsement_data
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(doc, "endorsement_data")
+    db.commit()
+    return {"message": "审批成功"}
+
+
+@router.get("/endorsements/my-status")
+def list_my_endorsement_status(
+    current_user: User = Depends(require_role("delegate")),
+    db: Session = Depends(get_db)
+):
+    """查看当前代表团提交的文件的联署状态"""
+    delegation_id = get_delegate_info(current_user)
+    documents = db.query(Document).filter(
+        Document.delegation_id == delegation_id,
+        Document.endorsing_delegations != None,
+        Document.recalled == False
+    ).all()
+    result = []
+    for d in documents:
+        del_objs = []
+        endorsement_data = d.endorsement_data or {}
+        for ed_id in (d.endorsing_delegations or []):
+            del_obj = db.query(Delegation).filter(Delegation.id == int(ed_id)).first()
+            edata = endorsement_data.get(str(int(ed_id)), {})
+            del_objs.append({
+                "delegation_id": int(ed_id),
+                "delegation_name": del_obj.name if del_obj else f"ID:{ed_id}",
+                "status": edata.get("status", "pending"),
+                "note": edata.get("note", ""),
+                "updated_at": edata.get("updated_at", "")
+            })
+        result.append({
+            "id": d.id,
+            "title": d.title,
+            "doc_type": d.doc_type,
+            "endorsements": del_objs,
+            "created_at": d.created_at.isoformat() if d.created_at else None
+        })
+    return result
 
 
 # ==================== 接收局势更新 ====================

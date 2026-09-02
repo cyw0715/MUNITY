@@ -42,6 +42,40 @@
             <span v-else style="color: #999">-</span>
           </template>
         </el-table-column>
+        <el-table-column label="联署" min-width="120" align="center">
+          <template #default="{ row }">
+            <template v-if="row.endorsements_info?.length">
+              <el-popover placement="bottom" :width="260" trigger="hover">
+                <template #reference>
+                  <div style="display:flex;gap:4px;justify-content:center">
+                    <el-tag
+                      v-for="e in row.endorsements_info"
+                      :key="e.delegation_id"
+                      :type="e.status === 'approved' ? 'success' : e.status === 'rejected' ? 'danger' : 'warning'"
+                      size="small"
+                      effect="plain"
+                      style="font-size:11px"
+                    >
+                      {{ e.delegation_name?.substring(0,2) }}
+                    </el-tag>
+                  </div>
+                </template>
+                <div v-for="e in row.endorsements_info" :key="e.delegation_id" style="padding:4px 0">
+                  <strong>{{ e.delegation_name }}</strong>
+                  <el-tag
+                    :type="e.status === 'approved' ? 'success' : e.status === 'rejected' ? 'danger' : 'warning'"
+                    size="small"
+                    effect="plain"
+                    style="margin-left:8px"
+                  >
+                    {{ e.status === 'approved' ? '通过' : e.status === 'rejected' ? '拒绝' : '待审' }}
+                  </el-tag>
+                </div>
+              </el-popover>
+            </template>
+            <span v-else style="color:#999">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="密级" width="100" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.doc_type === 'agreement'" :type="row.secrecy === 'secret' ? 'danger' : 'success'" size="small">
