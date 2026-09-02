@@ -102,6 +102,7 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import api from '../../api'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const activeTab = ref('pending')
 const loading = ref(false)
@@ -189,6 +190,10 @@ onMounted(async () => {
   } catch (e) {}
   loadPending()
   loadMyFiles()
+  const ws = useWebSocket()
+  ws.on('endorsement_new', loadPending)
+  ws.on('endorsement_reviewed', () => { loadPending(); loadMyFiles() })
+  ws.on('documents_changed', () => { loadPending(); loadMyFiles() })
 })
 </script>
 

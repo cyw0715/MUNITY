@@ -199,6 +199,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../api'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const activeTab = ref('directive')
 const loading = ref(false)
@@ -385,7 +386,11 @@ function downloadFile(filename) {
   link.click()
 }
 
-onMounted(loadData)
+onMounted(() => {
+  loadData()
+  const ws = useWebSocket()
+  ws.on('documents_changed', loadData)
+})
 </script>
 
 <style scoped>

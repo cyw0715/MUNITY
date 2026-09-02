@@ -160,6 +160,26 @@ async def submit_document(
     )
     db.add(document)
     db.commit()
+
+    # WS 广播：向委员会成员通知文件变更，向联署国阁首推送审批通知
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(delegation.committee_id, {
+            "type": "documents_changed"
+        })
+        if endorsing_list:
+            # 向联署代表团各成员发送通知
+            for ed_id in endorsing_list:
+                await ws_manager.send_to_delegation(ed_id, {
+                    "type": "endorsement_new",
+                    "doc_id": document.id,
+                    "title": document.title,
+                    "doc_type": document.doc_type,
+                    "delegation_name": delegation.name
+                }, db)
+    except Exception:
+        pass
+
     return {"message": "提交成功"}
 
 
@@ -219,7 +239,7 @@ def list_endorsements(
 
 
 @router.put("/endorsements/{doc_id}")
-def review_endorsement(
+async def review_endorsement(
     doc_id: int,
     data: dict,
     current_user: User = Depends(require_role("delegate")),
@@ -244,6 +264,24 @@ def review_endorsement(
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(doc, "endorsement_data")
     db.commit()
+
+    # WS 广播：通知文件变更，通知提交方联署审批结果
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(doc.committee_id, {
+            "type": "documents_changed"
+        })
+        await ws_manager.send_to_delegation(doc.delegation_id, {
+            "type": "endorsement_reviewed",
+            "doc_id": doc.id,
+            "title": doc.title,
+            "status": status,
+            "note": note,
+            "reviewer_delegation_id": delegation_id
+        }, db)
+    except Exception:
+        pass
+
     return {"message": "审批成功"}
 
 
