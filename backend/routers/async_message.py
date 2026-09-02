@@ -258,7 +258,6 @@ def staff_create_async_message(
 ):
     """学团发布非对称消息（支持多接收者）"""
     committee_ids = get_staff_committee_list(current_user)
-    committee_id = get_primary_committee(current_user)
 
     # 合并旧版字段
     recv_ids = list(set(data.receiver_ids or []))
@@ -289,20 +288,25 @@ def staff_create_async_message(
             if did not in found_ids:
                 raise HTTPException(status_code=404, detail=f"代表团不存在 (id={did})")
 
-    msg = AsyncMessage(
-        committee_id=committee_id,
-        sender_id=current_user.id,
-        receiver_id=recv_ids[0] if len(recv_ids) == 1 else (recv_ids[0] if recv_ids else None),
-        receiver_delegation_id=recv_dlg_ids[0] if len(recv_dlg_ids) == 1 else (recv_dlg_ids[0] if recv_dlg_ids else None),
-        receiver_ids=json.dumps(recv_ids),
-        receiver_delegation_ids=json.dumps(recv_dlg_ids),
-        title=data.title,
-        content=data.content,
-        visibility=data.visibility,
-    )
-    db.add(msg)
+    # 为每个委员会创建一条消息
+    created_messages = []
+    for cid in committee_ids:
+        msg = AsyncMessage(
+            committee_id=cid,
+            sender_id=current_user.id,
+            receiver_id=recv_ids[0] if len(recv_ids) == 1 else (recv_ids[0] if recv_ids else None),
+            receiver_delegation_id=recv_dlg_ids[0] if len(recv_dlg_ids) == 1 else (recv_dlg_ids[0] if recv_dlg_ids else None),
+            receiver_ids=json.dumps(recv_ids),
+            receiver_delegation_ids=json.dumps(recv_dlg_ids),
+            title=data.title,
+            content=data.content,
+            visibility=data.visibility,
+        )
+        db.add(msg)
+        created_messages.append(msg)
     db.commit()
-    db.refresh(msg)
+    push_msg = created_messages[0]
+    db.refresh(push_msg)
 
     # WebSocket 推送
     try:
@@ -311,7 +315,7 @@ def staff_create_async_message(
         asyncio.set_event_loop(loop)
         ws_payload = {
             "type": "new_async_message",
-            "message": msg_to_dict(msg, db)
+            "message": msg_to_dict(push_msg, db)
         }
         if recv_ids:
             for uid in recv_ids:
@@ -326,7 +330,7 @@ def staff_create_async_message(
     except Exception as e:
         logger.warning(f"WebSocket 推送失败（消息已保存）: {e}")
 
-    return msg_to_dict(msg, db)
+    return msg_to_dict(push_msg, db)
 
 
 @router.delete("/staff/async-messages/{message_id}")
