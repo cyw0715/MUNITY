@@ -31,10 +31,7 @@
         </div>
       </div>
       <div class="update-meta">
-        <span v-if="item.visibility?.length" style="color: #909399; font-size: 12px">
-          可见：{{ item.visibility.length }} 个代表
-        </span>
-        <span v-else style="color: #909399; font-size: 12px">所有人可见</span>
+        <span style="color: #909399; font-size: 12px">全体代表可见</span>
       </div>
     </div>
     <el-empty v-if="!updates.length" description="暂无局势更新" />
@@ -48,55 +45,6 @@
       </el-form-item>
       <el-form-item label="内容" required>
         <el-input v-model="form.content" type="textarea" :rows="6" />
-      </el-form-item>
-      <el-form-item label="可见代表">
-        <div style="width: 100%">
-          <div v-if="selectedDelegations.length" style="margin-bottom: 8px">
-            <el-tag
-              v-for="dId in selectedDelegations"
-              :key="dId"
-              closable
-              @close="removeDelegation(dId)"
-              style="margin-right: 8px; margin-bottom: 4px"
-            >
-              {{ getDelegationName(dId) }}
-            </el-tag>
-          </div>
-          <el-select
-            v-model="currentDelegationId"
-            placeholder="选择代表团添加"
-            clearable
-            style="width: 100%; margin-bottom: 8px"
-            @change="addDelegation"
-          >
-            <el-option
-              v-for="d in availableDelegations"
-              :key="d.id"
-              :label="d.name"
-              :value="d.id"
-            />
-          </el-select>
-          <el-select
-            v-model="selectedVisibility"
-            multiple
-            placeholder="留空则所有人可见"
-            style="width: 100%"
-            :disabled="!selectedDelegations.length"
-          >
-            <el-option-group
-              v-for="dId in selectedDelegations"
-              :key="dId"
-              :label="getDelegationName(dId)"
-            >
-              <el-option
-                v-for="m in getDelegationMembers(dId)"
-                :key="m.id"
-                :label="m.username + (m.is_leader ? ' (阁首)' : '')"
-                :value="m.id"
-              />
-            </el-option-group>
-          </el-select>
-        </div>
       </el-form-item>
     </el-form>
     <template #footer>
@@ -145,71 +93,27 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search } from '@element-plus/icons-vue'
-import { Loading } from '@element-plus/icons-vue'
+import { Search, Loading } from '@element-plus/icons-vue'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
 
 const updates = ref([])
 const keyword = ref('')
-const delegations = ref([])
-const allDelegates = ref([])
-
+const searchResults = ref([])
+const searchLoading = ref(false)
+const searchDialogVisible = ref(false)
 const createDialogVisible = ref(false)
 const createLoading = ref(false)
 const detailVisible = ref(false)
 const detailItem = ref(null)
-const searchDialogVisible = ref(false)
-const searchResults = ref([])
-const searchLoading = ref(false)
-const selectedDelegations = ref([])
-const currentDelegationId = ref(null)
-const selectedVisibility = ref([])
-
-const form = ref({
-  title: '',
-  content: ''
-})
-
-const availableDelegations = computed(() => {
-  return delegations.value.filter(d => !selectedDelegations.value.includes(d.id))
-})
-
-function getDelegationName(id) {
-  const d = delegations.value.find(d => d.id === id)
-  return d ? d.name : '未知'
-}
-
-function getDelegationMembers(delegationId) {
-  return allDelegates.value.filter(d => d.delegation_id === delegationId)
-}
-
-function addDelegation(dId) {
-  if (dId && !selectedDelegations.value.includes(dId)) {
-    selectedDelegations.value.push(dId)
-  }
-  currentDelegationId.value = null
-}
-
-function removeDelegation(dId) {
-  selectedDelegations.value = selectedDelegations.value.filter(id => id !== dId)
-  const memberIds = allDelegates.value.filter(d => d.delegation_id === dId).map(d => d.id)
-  selectedVisibility.value = selectedVisibility.value.filter(id => !memberIds.includes(id))
-}
+const form = ref({ title: '', content: '' })
 
 async function loadData() {
   try {
-    const [uRes, dRes, delRes] = await Promise.all([
-      api.get('/api/staff/updates'),
-      api.get('/api/staff/delegations'),
-      api.get('/api/staff/delegates')
-    ])
-    // 只显示文本类型的更新，过滤掉会议文件
+    const uRes = await api.get('/api/staff/updates')
     updates.value = uRes.data.filter(u => u.type === 'text')
-    delegations.value = dRes.data
-    allDelegates.value = delRes.data
   } catch (e) {}
 }
 
@@ -233,9 +137,6 @@ async function handleSearch() {
 
 function showCreateDialog() {
   form.value = { title: '', content: '' }
-  selectedDelegations.value = []
-  currentDelegationId.value = null
-  selectedVisibility.value = []
   createDialogVisible.value = true
 }
 
@@ -253,8 +154,7 @@ async function handleCreate() {
   try {
     await api.post('/api/staff/updates', {
       title: form.value.title,
-      content: form.value.content,
-      visibility: selectedVisibility.value
+      content: form.value.content
     })
     ElMessage.success('发布成功')
     createDialogVisible.value = false

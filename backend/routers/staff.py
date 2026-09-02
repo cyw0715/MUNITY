@@ -1123,9 +1123,8 @@ def get_speaker_detail(
 
 class UpdateCreate(BaseModel):
     title: str
-    content: str = ""
+    content: str
     type: str = "text"
-    visibility: List[int] = []
 
 
 @router.get("/updates")
@@ -1175,7 +1174,7 @@ async def create_update(
         title=data.title,
         content=data.content,
         type=data.type,
-        visibility=data.visibility
+        visibility=None  # 所有更新对所有代表可见
     )
     db.add(update)
     db.commit()

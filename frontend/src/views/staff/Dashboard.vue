@@ -355,18 +355,19 @@ onUnmounted(() => {
   color: #7dd3fc;
 }
 
-/* 通知红点 */
+/* 通知红点 — 闪烁2次后保持常亮 */
 .notif-dot {
   width: 8px; height: 8px;
   background: #ef4444;
   border-radius: 50%;
   margin-left: auto;
-  animation: flash-pulse 1.2s infinite;
+  animation: flash-pulse 1.2s 2 forwards;
 }
 
+/* 侧栏闪烁 — 动画结束后保持左侧红色指示条 */
 .has-notification {
   box-shadow: inset 3px 0 0 #ef4444;
-  animation: sidebar-flash 1.5s ease-in-out infinite;
+  animation: sidebar-flash 0.5s 4 forwards;
 }
 
 @keyframes flash-pulse {

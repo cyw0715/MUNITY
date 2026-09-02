@@ -122,7 +122,7 @@ const refreshTimeline = async () => {
 
 onMounted(() => {
   fetchTimeline()
-  refreshTimer = setInterval(fetchTimeline, 60000)
+  refreshTimer = setInterval(fetchTimeline, 1000)
   const ws = useWebSocket()
   ws.on('timeline_changed', fetchTimeline)
 })
