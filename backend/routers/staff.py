@@ -1297,13 +1297,6 @@ def list_documents(
                 continue
         
         delegation = db.query(Delegation).filter(Delegation.id == d.delegation_id).first()
-        # 解析签署国家名称
-        signing_names = []
-        if d.signing_countries:
-            for cid in d.signing_countries:
-                c = db.query(Delegation).filter(Delegation.id == cid).first()
-                if c:
-                    signing_names.append(c.name)
         # 解析联署状态
         endorsements_info = []
         endorsement_data = d.endorsement_data or {}
@@ -1329,8 +1322,6 @@ def list_documents(
             "title": d.title,
             "content": d.content,
             "file_path": d.file_path,
-            "signing_countries": d.signing_countries or [],
-            "signing_country_names": signing_names,
             "secrecy": d.secrecy or "public",
             "published": d.published or False,
             "recalled": d.recalled or False,

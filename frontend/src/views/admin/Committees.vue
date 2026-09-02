@@ -112,7 +112,8 @@ const featureLabels = {
   agenda: '议程管理',
   directives: '指令管理',
   updates: '局势更新',
-  timeline: '时间线'
+  timeline: '时间线',
+  directive_points: '指令·行政点数'
 }
 
 async function loadCommittees() {

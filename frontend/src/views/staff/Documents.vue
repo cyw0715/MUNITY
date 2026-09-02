@@ -32,16 +32,6 @@
           </template>
         </el-table-column>
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
-        <el-table-column label="签署国家" min-width="140">
-          <template #default="{ row }">
-            <template v-if="row.doc_type === 'agreement'">
-              <el-tag v-for="name in row.signing_country_names" :key="name" size="small" style="margin-right: 4px">
-                {{ name }}
-              </el-tag>
-            </template>
-            <span v-else style="color: #999">-</span>
-          </template>
-        </el-table-column>
         <el-table-column label="联署" min-width="120" align="center">
           <template #default="{ row }">
             <template v-if="row.endorsements_info?.length">
@@ -159,7 +149,6 @@
         </p>
         <p><strong>标题：</strong>{{ detailItem.title }}</p>
         <template v-if="detailItem.doc_type === 'agreement'">
-          <p><strong>签署国家：</strong>{{ detailItem.signing_country_names?.join('、') || '无' }}</p>
           <p><strong>密级：</strong>{{ detailItem.secrecy === 'secret' ? '秘密' : '公开' }}</p>
         </template>
         <el-divider />

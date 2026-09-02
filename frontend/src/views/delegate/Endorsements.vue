@@ -85,7 +85,6 @@
         <p><strong>起草人：</strong>{{ detailItem.drafter }}</p>
         <p><strong>类型：</strong><el-tag>{{ docTypeLabels[detailItem.doc_type] }}</el-tag></p>
         <p><strong>密级：</strong>{{ detailItem.secrecy === 'secret' ? '秘密' : '公开' }}</p>
-        <p v-if="detailItem.signing_countries?.length"><strong>签署国家：</strong>{{ getDelegationNames(detailItem.signing_countries) }}</p>
         <el-divider />
         <div style="white-space: pre-wrap; background: #f5f7fa; padding: 16px; border-radius: 4px">
           {{ detailItem.content || '无内容' }}

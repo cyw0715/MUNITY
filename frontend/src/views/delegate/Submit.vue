@@ -7,18 +7,20 @@
             <el-form-item label="起草人" prop="drafter">
               <el-input v-model="directiveForm.drafter" :placeholder="userInfo?.username" />
             </el-form-item>
-            <el-form-item label="行政点数" prop="admin_points">
-              <el-input-number v-model="directiveForm.admin_points" :min="0" />
-              <span style="margin-left: 12px; color: #909399">
-                公开至少1点，秘密至少2点
-              </span>
-            </el-form-item>
-            <el-form-item label="密级" prop="secrecy">
-              <el-radio-group v-model="directiveForm.secrecy">
-                <el-radio value="public">公开</el-radio>
-                <el-radio value="secret">秘密</el-radio>
-              </el-radio-group>
-            </el-form-item>
+            <template v-if="hasDirectivePoints">
+              <el-form-item label="行政点数" prop="admin_points">
+                <el-input-number v-model="directiveForm.admin_points" :min="0" />
+                <span style="margin-left: 12px; color: #909399">
+                  公开至少1点，秘密至少2点
+                </span>
+              </el-form-item>
+              <el-form-item label="密级" prop="secrecy">
+                <el-radio-group v-model="directiveForm.secrecy">
+                  <el-radio value="public">公开</el-radio>
+                  <el-radio value="secret">秘密</el-radio>
+                </el-radio-group>
+              </el-form-item>
+            </template>
             <el-form-item label="涉及部门" prop="departments" required>
               <el-checkbox-group v-model="directiveForm.departments">
                 <el-checkbox v-for="dept in departmentOptions" :key="dept" :value="dept">{{ dept }}</el-checkbox>
@@ -51,11 +53,6 @@
 
             <!-- 协定专属字段 -->
             <template v-if="documentForm.doc_type === 'agreement'">
-              <el-form-item label="签署国家" prop="signing_countries">
-                <el-select v-model="documentForm.signing_countries" multiple placeholder="选择签署国家" style="width: 100%">
-                  <el-option v-for="d in allDelegations" :key="d.id" :label="d.name" :value="d.id" />
-                </el-select>
-              </el-form-item>
               <el-form-item label="密级" prop="secrecy">
                 <el-radio-group v-model="documentForm.secrecy">
                   <el-radio value="public">公开</el-radio>
@@ -184,10 +181,6 @@
             {{ detailDoc.secrecy === 'secret' ? '秘密' : '公开' }}
           </el-tag>
         </div>
-        <div v-if="detailDoc.doc_type === 'agreement' && detailDoc.signing_countries?.length" class="detail-item">
-          <span class="detail-label">签署国家：</span>
-          <span>{{ getSigningCountryNames(detailDoc.signing_countries) }}</span>
-        </div>
         <div class="detail-item">
           <span class="detail-label">提交时间：</span>
           <span>{{ new Date(detailDoc.created_at).toLocaleString('zh-CN') }}</span>
@@ -257,12 +250,12 @@ const documentForm = ref({
   doc_type: 'declaration',
   title: '',
   content: '',
-  signing_countries: [],
   secrecy: 'public',
   endorsing_delegations: []
 })
 
 const myDelegationId = ref(null)
+const hasDirectivePoints = computed(() => (userInfo.value?.committee_features || []).includes('directive_points'))
 const availableEndorsingDelegations = computed(() => {
   return allDelegations.value.filter(d => d.id !== myDelegationId.value)
 })
@@ -291,15 +284,7 @@ const filteredRecords = computed(() => {
   return all
 })
 
-function getSigningCountryNames(ids) {
-  return ids.map(id => {
-    const d = allDelegations.value.find(del => del.id === id)
-    return d?.name || `ID:${id}`
-  }).join('、')
-}
-
 function onDocTypeChange() {
-  documentForm.value.signing_countries = []
   documentForm.value.secrecy = 'public'
   documentForm.value.endorsing_delegations = []
 }
@@ -370,9 +355,6 @@ async function submitDocument() {
     formData.append('title', documentForm.value.title)
     formData.append('content', documentForm.value.content || '')
     formData.append('secrecy', documentForm.value.secrecy)
-    if (documentForm.value.signing_countries?.length) {
-      formData.append('signing_countries', JSON.stringify(documentForm.value.signing_countries))
-    }
     if (documentForm.value.endorsing_delegations?.length) {
       formData.append('endorsing_delegations', JSON.stringify(documentForm.value.endorsing_delegations))
     }
@@ -384,7 +366,7 @@ async function submitDocument() {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     ElMessage.success('文件提交成功')
-    documentForm.value = { drafter: '', doc_type: 'declaration', title: '', content: '', signing_countries: [], secrecy: 'public', endorsing_delegations: [] }
+    documentForm.value = { drafter: '', doc_type: 'declaration', title: '', content: '', secrecy: 'public', endorsing_delegations: [] }
     selectedFile.value = null
     if (uploadRef.value) uploadRef.value.clearFiles()
     loadData()

@@ -56,11 +56,17 @@ def submit_directive(
     if not delegation:
         raise HTTPException(status_code=400, detail="代表团不存在")
 
-    # 验证行政点数
-    if data.secrecy == "public" and data.admin_points < 1:
-        raise HTTPException(status_code=400, detail="公开指令至少需要1个行政点数")
-    if data.secrecy == "secret" and data.admin_points < 2:
-        raise HTTPException(status_code=400, detail="秘密指令至少需要2个行政点数")
+    # 检查当前委员会是否启用了行政点数功能
+    from models.committee import Committee
+    committee = db.query(Committee).filter(Committee.id == delegation.committee_id).first()
+    directive_points_enabled = "directive_points" in (committee.features or []) if committee else False
+
+    if directive_points_enabled:
+        # 验证行政点数
+        if data.secrecy == "public" and data.admin_points < 1:
+            raise HTTPException(status_code=400, detail="公开指令至少需要1个行政点数")
+        if data.secrecy == "secret" and data.admin_points < 2:
+            raise HTTPException(status_code=400, detail="秘密指令至少需要2个行政点数")
 
     # 验证涉及部门
     if not data.departments:
@@ -104,7 +110,6 @@ async def submit_document(
     title: str = Form(""),
     content: str = Form(""),
     secrecy: str = Form("public"),
-    signing_countries: str = Form("[]"),
     endorsing_delegations: str = Form("[]"),
     file: UploadFile = File(None),
     current_user: User = Depends(require_role("delegate")),
@@ -115,20 +120,8 @@ async def submit_document(
     if not delegation:
         raise HTTPException(status_code=400, detail="代表团不存在")
 
-    # 解析签署国家
-    import json
-    try:
-        signing_countries_list = json.loads(signing_countries)
-    except:
-        signing_countries_list = []
-
-    # 协定特殊验证
-    if doc_type == "agreement":
-        # 协定必须有签署国家
-        if not signing_countries_list:
-            raise HTTPException(status_code=400, detail="协定必须选择签署国家")
-
     # 解析联署代表团
+    import json
     endorsing_list = json.loads(endorsing_delegations) if endorsing_delegations else []
     endorsement_data = {}
     now_str = datetime.utcnow().isoformat()
@@ -160,7 +153,7 @@ async def submit_document(
         title=title,
         content=content,
         file_path=file_path,
-        signing_countries=signing_countries_list if doc_type == "agreement" else None,
+        signing_countries=None,
         secrecy=secrecy if doc_type == "agreement" else "public",
         endorsing_delegations=endorsing_list if endorsing_list else None,
         endorsement_data=endorsement_data if endorsement_data else None
@@ -216,7 +209,6 @@ def list_endorsements(
             "delegation_name": del_obj.name if del_obj else "未知",
             "content": d.content,
             "file_path": d.file_path,
-            "signing_countries": d.signing_countries or [],
             "secrecy": d.secrecy or "public",
             "status": my_status.get("status", "pending"),
             "note": my_status.get("note", ""),
@@ -405,6 +397,8 @@ def list_delegations(current_user: User = Depends(require_role("delegate")), db:
 @router.get("/me")
 def get_me(current_user: User = Depends(require_role("delegate")), db: Session = Depends(get_db)):
     delegation = db.query(Delegation).filter(Delegation.id == current_user.delegation_id).first()
+    from models.committee import Committee
+    committee = db.query(Committee).filter(Committee.id == delegation.committee_id).first() if delegation else None
     return {
         "id": current_user.id,
         "username": current_user.username,
@@ -412,7 +406,8 @@ def get_me(current_user: User = Depends(require_role("delegate")), db: Session =
         "seat": current_user.seat,
         "is_leader": current_user.is_leader,
         "delegation_id": current_user.delegation_id,
-        "delegation_name": delegation.name if delegation else None
+        "delegation_name": delegation.name if delegation else None,
+        "committee_features": committee.features if committee else []
     }
 # ==================== 文件上传/下载 ====================
 
