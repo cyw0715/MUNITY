@@ -29,9 +29,10 @@
 
         <el-divider />
 
-        <el-menu-item index="/delegate/async-messages" class="menu-highlight">
+        <el-menu-item index="/delegate/async-messages" :class="{ 'has-notification': notifications.messages }" @click="clearNotification('messages')">
           <el-icon><Message /></el-icon>
           <span>非对称消息</span>
+          <span v-if="notifications.messages" class="notif-dot" />
         </el-menu-item>
 
         <el-menu-item index="/delegate/updates" :class="{ 'has-notification': notifications.updates }" @click="clearNotification('updates')">
@@ -44,9 +45,10 @@
           <span>会议文件</span>
           <span v-if="notifications.meetingFiles" class="notif-dot" />
         </el-menu-item>
-        <el-menu-item index="/delegate/endorsements">
+        <el-menu-item index="/delegate/endorsements" :class="{ 'has-notification': notifications.endorsements }" @click="clearNotification('endorsements')">
           <el-icon><Select /></el-icon>
           <span>联署审批</span>
+          <span v-if="notifications.endorsements" class="notif-dot" />
         </el-menu-item>
       </el-menu>
     </aside>
@@ -152,6 +154,13 @@ onMounted(async () => {
     delegationName.value = data.delegation_name
   } catch (e) {}
   startPolling()
+  // WS 实时闪烁通知
+  import('../../composables/useWebSocket').then(({ useWebSocket }) => {
+    const ws = useWebSocket()
+    ws.on('new_async_message', () => { notifications.value.messages = true })
+    ws.on('documents_changed', () => { notifications.value.endorsements = true })
+    ws.on('endorsement_new', () => { notifications.value.endorsements = true })
+  })
 })
 
 onUnmounted(() => {
@@ -212,15 +221,30 @@ onUnmounted(() => {
   color: var(--sidebar-text-active) !important;
   font-weight: 600;
 }
-.sidebar-menu .el-menu-item .el-icon { font-size: 18px; }
-.sidebar-menu .menu-highlight .el-icon { color: #38bdf8; }
-.sidebar-menu .menu-highlight.is-active .el-icon { color: #fff; }
+.sidebar-menu .el-menu-item .el-icon { font-size: 18px; color: #38bdf8; transition: color var(--transition-fast); }
+.sidebar-menu .el-menu-item.is-active .el-icon { color: #fff; }
+.sidebar-menu .el-menu-item:hover .el-icon { color: #7dd3fc; }
 
 .notif-dot {
   width: 8px; height: 8px;
   background: #ef4444; border-radius: 50%;
   margin-left: auto;
-  animation: pulse 1.5s infinite;
+  animation: flash-pulse 1.2s infinite;
+}
+
+.has-notification {
+  box-shadow: inset 3px 0 0 #ef4444;
+  animation: sidebar-flash 1.5s ease-in-out infinite;
+}
+
+@keyframes flash-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.8); }
+}
+
+@keyframes sidebar-flash {
+  0%, 100% { background: var(--sidebar-bg-hover) !important; }
+  50% { background: rgba(239, 68, 68, 0.12) !important; }
 }
 
 .el-divider {

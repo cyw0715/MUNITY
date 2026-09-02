@@ -6,7 +6,9 @@ const notifications = ref({
   directives: false,
   documents: false,
   updates: false,
-  meetingFiles: false
+  meetingFiles: false,
+  messages: false,
+  endorsements: false
 })
 
 // 上次检查的数量
@@ -14,7 +16,9 @@ const lastCounts = ref({
   directives: 0,
   documents: 0,
   updates: 0,
-  meetingFiles: 0
+  meetingFiles: 0,
+  messages: 0,
+  endorsements: 0
 })
 
 let pollTimer = null
@@ -62,21 +66,29 @@ export function useNotification(role) {
         lastCounts.value.updates = newUpdates
         saveCounts()
       } else if (role === 'delegate') {
-        const [uRes, mRes] = await Promise.all([
+        const [uRes, mRes, msgRes, endRes] = await Promise.all([
           api.get('/api/delegate/updates'),
-          api.get('/api/delegate/meeting-files')
+          api.get('/api/delegate/meeting-files'),
+          api.get('/api/delegate/async-messages/unread-count').catch(() => ({ data: { count: 0 } })),
+          api.get('/api/delegate/endorsements').catch(() => ({ data: [] }))
         ])
 
         const newUpdates = uRes.data.filter(u => u.type === 'text').length
         const newMeetingFiles = mRes.data.length
+        const newMessages = msgRes.data.count || 0
+        const newEndorsements = Array.isArray(endRes.data) ? endRes.data.length : 0
 
         if (initialized) {
           notifications.value.updates = newUpdates > lastCounts.value.updates
           notifications.value.meetingFiles = newMeetingFiles > lastCounts.value.meetingFiles
+          notifications.value.messages = newMessages > lastCounts.value.messages
+          notifications.value.endorsements = newEndorsements > lastCounts.value.endorsements
         }
 
         lastCounts.value.updates = newUpdates
         lastCounts.value.meetingFiles = newMeetingFiles
+        lastCounts.value.messages = newMessages
+        lastCounts.value.endorsements = newEndorsements
         saveCounts()
       }
 

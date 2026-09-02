@@ -51,9 +51,10 @@
         </el-menu-item>
 
         <!-- 非对称消息 -->
-        <el-menu-item index="/staff/async-messages">
+        <el-menu-item index="/staff/async-messages" :class="{ 'has-notification': notifications.messages }" @click="clearNotification('messages')">
           <el-icon><Message /></el-icon>
           <span>非对称消息</span>
+          <span v-if="notifications.messages" class="notif-dot" />
         </el-menu-item>
 
         <el-menu-item index="/staff/directives" :class="{ 'has-notification': notifications.directives }" @click="clearNotification('directives')">
@@ -244,6 +245,15 @@ onMounted(async () => {
     }
   } catch (e) {}
   startPolling()
+  // WS 实时闪烁通知
+  import('../../composables/useWebSocket').then(({ useWebSocket }) => {
+    const ws = useWebSocket()
+    ws.on('new_async_message', () => { notifications.value.messages = true })
+    ws.on('documents_changed', () => {
+      notifications.value.directives = true
+      notifications.value.documents = true
+    })
+  })
 })
 
 async function handleSwitchCommittee(committeeId) {
@@ -347,12 +357,26 @@ onUnmounted(() => {
 
 /* 通知红点 */
 .notif-dot {
-  width: 8px;
-  height: 8px;
+  width: 8px; height: 8px;
   background: #ef4444;
   border-radius: 50%;
   margin-left: auto;
-  animation: pulse 1.5s infinite;
+  animation: flash-pulse 1.2s infinite;
+}
+
+.has-notification {
+  box-shadow: inset 3px 0 0 #ef4444;
+  animation: sidebar-flash 1.5s ease-in-out infinite;
+}
+
+@keyframes flash-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.8); }
+}
+
+@keyframes sidebar-flash {
+  0%, 100% { background: var(--sidebar-bg-hover) !important; }
+  50% { background: rgba(239, 68, 68, 0.12) !important; }
 }
 
 .el-divider {
