@@ -126,6 +126,12 @@ async def submit_document(
     # 解析联署代表团
     import json
     endorsing_list = json.loads(endorsing_delegations) if endorsing_delegations else []
+
+    # 非阁首代表提交需联署文件时，自动将本代表团加入联署名单（使其阁首能审批）
+    if endorsing_list and not current_user.is_leader:
+        if delegation_id not in endorsing_list:
+            endorsing_list.insert(0, delegation_id)
+
     endorsement_data = {}
     now_str = datetime.utcnow().isoformat()
     if endorsing_list:
@@ -318,6 +324,8 @@ async def review_endorsement(
         result_type = "approved" if all_approved else "rejected"
         label = "已全部通过" if all_approved else "未通过（有代表团拒绝联署）"
         logger.info(f"联署完成: doc={doc.id} title={doc.title} result={result_type}")
+        import sys
+        print(f"[ENDORSEMENT_COMPLETED] doc={doc.id} title={doc.title} result={result_type} sending to committee staff...", flush=True)
         # 仅推送到学团端（不对代表开放）
         try:
             await ws_manager.send_to_committee_staff(doc.committee_id, {
