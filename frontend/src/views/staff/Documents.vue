@@ -286,6 +286,8 @@ const createForm = ref({
 const searchResults = ref([])
 const searchDialogVisible = ref(false)
 
+const pollTimer = ref(null)
+
 const docTypeLabels = { declaration: '声明', memorandum: '备忘录', agreement: '协定' }
 
 const availableDelegations = computed(() => {
@@ -446,10 +448,13 @@ onMounted(() => {
   loadData()
   const ws = useWebSocket()
   ws.on('documents_changed', loadData)
+  // 兜底：每 30 秒自动刷新
+  pollTimer.value = setInterval(loadData, 30000)
 })
 onUnmounted(() => {
   const ws = useWebSocket()
   ws.off('documents_changed', loadData)
+  if (pollTimer.value) clearInterval(pollTimer.value)
 })
 </script>
 

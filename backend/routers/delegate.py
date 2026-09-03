@@ -268,9 +268,15 @@ async def review_endorsement(
     # WS 广播：通知文件变更，通知提交方联署审批结果
     try:
         from services.websocket_manager import ws_manager
+        # 广播到委员会所有在线用户（基于 WS 订阅）
         await ws_manager.broadcast_committee(doc.committee_id, {
             "type": "documents_changed"
         })
+        # 额外查数据库推送到所有学团成员（防止 WS 订阅遗漏）
+        await ws_manager.send_to_committee_staff(doc.committee_id, {
+            "type": "documents_changed"
+        }, db)
+        # 通知文件提交方代表团
         await ws_manager.send_to_delegation(doc.delegation_id, {
             "type": "endorsement_reviewed",
             "doc_id": doc.id,
