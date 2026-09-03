@@ -285,6 +285,38 @@ async def review_endorsement(
             "note": note,
             "reviewer_delegation_id": delegation_id
         }, db)
+
+        # 检查联署是否已全部完成
+        endorsing_list = doc.endorsing_delegations or []
+        all_approved = True
+        any_rejected = False
+        for ed_id in endorsing_list:
+            ed_key = str(int(ed_id))
+            edata = endorsement_data.get(ed_key, {})
+            estatus = edata.get("status", "pending")
+            if estatus == "rejected":
+                any_rejected = True
+                all_approved = False
+                break
+            elif estatus != "approved":
+                all_approved = False
+        if all_approved or any_rejected:
+            result_type = "approved" if all_approved else "rejected"
+            label = "已全部通过" if all_approved else "未通过（有代表团拒绝联署）"
+            await ws_manager.broadcast_committee(doc.committee_id, {
+                "type": "endorsement_completed",
+                "doc_id": doc.id,
+                "title": doc.title,
+                "result": result_type,
+                "label": label
+            })
+            await ws_manager.send_to_committee_staff(doc.committee_id, {
+                "type": "endorsement_completed",
+                "doc_id": doc.id,
+                "title": doc.title,
+                "result": result_type,
+                "label": label
+            }, db)
     except Exception:
         pass
 

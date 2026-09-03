@@ -57,6 +57,17 @@ export function useWebSocket() {
               duration: 0
             })
           }
+
+          // 联署完成通知 — 全屏模式时不弹出
+          if (data.type === 'endorsement_completed' && !document.fullscreenElement) {
+            const isApproved = data.result === 'approved'
+            ElNotification({
+              title: isApproved ? '联署已全部通过' : '联署未通过',
+              message: `《${data.title}》${data.label || (isApproved ? '已获得所有联署代表团通过' : '已有代表团拒绝联署')}`,
+              type: isApproved ? 'success' : 'warning',
+              duration: 0
+            })
+          }
         } catch (e) {
           // 忽略非 JSON 消息
         }
