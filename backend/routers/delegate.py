@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import os
 import uuid
+import logging
 from database import get_db
 from models.user import User
 from models.delegation import Delegation
@@ -14,6 +15,8 @@ from models.document import Document
 from models.update import Update
 from services import require_role
 from models.agenda import AgendaItem
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/delegate", tags=["代表"])
 class AgendaItemOut(BaseModel):
@@ -266,17 +269,26 @@ async def review_endorsement(
     db.commit()
 
     # WS 广播：通知文件变更，通知提交方联署审批结果
+    from services.websocket_manager import ws_manager
+    
+    # 广播到委员会所有在线用户（文件变更通知）
     try:
-        from services.websocket_manager import ws_manager
-        # 广播到委员会所有在线用户（基于 WS 订阅）
         await ws_manager.broadcast_committee(doc.committee_id, {
             "type": "documents_changed"
         })
-        # 额外查数据库推送到所有学团成员（防止 WS 订阅遗漏）
+    except Exception as e:
+        logger.error(f"review_endorsement broadcast_committee error: {e}")
+    
+    # 推送到学团成员（文件变更通知，兜底）
+    try:
         await ws_manager.send_to_committee_staff(doc.committee_id, {
             "type": "documents_changed"
         }, db)
-        # 通知文件提交方代表团
+    except Exception as e:
+        logger.error(f"review_endorsement send_to_committee_staff error: {e}")
+    
+    # 通知文件提交方代表团
+    try:
         await ws_manager.send_to_delegation(doc.delegation_id, {
             "type": "endorsement_reviewed",
             "doc_id": doc.id,
@@ -285,31 +297,29 @@ async def review_endorsement(
             "note": note,
             "reviewer_delegation_id": delegation_id
         }, db)
+    except Exception as e:
+        logger.error(f"review_endorsement send_to_delegation error: {e}")
 
-        # 检查联署是否已全部完成
-        endorsing_list = doc.endorsing_delegations or []
-        all_approved = True
-        any_rejected = False
-        for ed_id in endorsing_list:
-            ed_key = str(int(ed_id))
-            edata = endorsement_data.get(ed_key, {})
-            estatus = edata.get("status", "pending")
-            if estatus == "rejected":
-                any_rejected = True
-                all_approved = False
-                break
-            elif estatus != "approved":
-                all_approved = False
-        if all_approved or any_rejected:
-            result_type = "approved" if all_approved else "rejected"
-            label = "已全部通过" if all_approved else "未通过（有代表团拒绝联署）"
-            await ws_manager.broadcast_committee(doc.committee_id, {
-                "type": "endorsement_completed",
-                "doc_id": doc.id,
-                "title": doc.title,
-                "result": result_type,
-                "label": label
-            })
+    # 检查联署是否已全部完成
+    endorsing_list = doc.endorsing_delegations or []
+    all_approved = True
+    any_rejected = False
+    for ed_id in endorsing_list:
+        ed_key = str(int(ed_id))
+        edata = endorsement_data.get(ed_key, {})
+        estatus = edata.get("status", "pending")
+        if estatus == "rejected":
+            any_rejected = True
+            all_approved = False
+            break
+        elif estatus != "approved":
+            all_approved = False
+    if all_approved or any_rejected:
+        result_type = "approved" if all_approved else "rejected"
+        label = "已全部通过" if all_approved else "未通过（有代表团拒绝联署）"
+        logger.info(f"联署完成: doc={doc.id} title={doc.title} result={result_type}")
+        # 仅推送到学团端（不对代表开放）
+        try:
             await ws_manager.send_to_committee_staff(doc.committee_id, {
                 "type": "endorsement_completed",
                 "doc_id": doc.id,
@@ -317,8 +327,10 @@ async def review_endorsement(
                 "result": result_type,
                 "label": label
             }, db)
-    except Exception:
-        pass
+        except Exception as e:
+            logger.error(f"review_endorsement endorsement_completed error: {e}")
+    else:
+        logger.info(f"联署尚未完成: doc={doc.id}, 已审批={len([k for k,v in (endorsement_data or {}).items() if v.get('status') in ('approved','rejected')])}/{len(endorsing_list)}")
 
     return {"message": "审批成功"}
 
