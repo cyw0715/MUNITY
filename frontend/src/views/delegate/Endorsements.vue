@@ -27,8 +27,8 @@
           <div v-else class="endorsement-list">
             <div v-for="item in pendingEndorsements" :key="item.id" class="endorsement-card">
               <div class="endorsement-header">
-                <el-tag size="small">{{ docTypeLabels[item.doc_type] || item.doc_type }}</el-tag>
-                <span class="endorsement-from">{{ item.delegation_name }} · {{ item.drafter }}</span>
+                <el-tag size="small">{{ docTypeLabel(item.doc_type) }}</el-tag>
+                <span class="endorsement-from">{{ item.drafter }}</span>
               </div>
               <div class="endorsement-title" @click="showDetail(item)">{{ item.title }}</div>
               <div class="endorsement-meta" v-if="item.signing_countries?.length">
@@ -62,7 +62,7 @@
         <div v-else class="my-files-list">
           <div v-for="file in myFiles" :key="file.id" class="my-file-card">
             <div class="file-header">
-              <el-tag size="small">{{ docTypeLabels[file.doc_type] || file.doc_type }}</el-tag>
+              <el-tag size="small">{{ docTypeLabel(file.doc_type) }}</el-tag>
               <span class="file-title">{{ file.title }}</span>
             </div>
             <div class="file-endorsements">
@@ -83,7 +83,7 @@
       <div v-if="detailItem">
         <p><strong>来源：</strong>{{ detailItem.delegation_name }}</p>
         <p><strong>起草人：</strong>{{ detailItem.drafter }}</p>
-        <p><strong>类型：</strong><el-tag>{{ docTypeLabels[detailItem.doc_type] }}</el-tag></p>
+        <p><strong>类型：</strong><el-tag>{{ docTypeLabel(detailItem.doc_type) }}</el-tag></p>
         <p><strong>密级：</strong>{{ detailItem.secrecy === 'secret' ? '秘密' : '公开' }}</p>
         <el-divider />
         <div style="white-space: pre-wrap; background: #f5f7fa; padding: 16px; border-radius: 4px">
@@ -103,6 +103,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { resolveDocumentTypes, findDocType } from '../../constants/documentTypes'
 
 const activeTab = ref('pending')
 const loading = ref(false)
@@ -113,7 +114,13 @@ const isLeader = ref(false)
 const detailVisible = ref(false)
 const detailItem = ref(null)
 
-const docTypeLabels = { declaration: '声明', memorandum: '备忘录', agreement: '协定' }
+// 本委员会的文件类型配置（支持学团自定义类型）
+const documentTypes = ref([])
+
+function docTypeLabel(value) {
+  const t = findDocType(documentTypes.value, value)
+  return t ? t.name : value
+}
 
 function getDelegationNames(ids) {
   return ids.map(id => `ID:${id}`).join('、')
@@ -200,6 +207,7 @@ onMounted(async () => {
   try {
     const { data } = await api.get('/api/delegate/me')
     isLeader.value = data.is_leader
+    documentTypes.value = resolveDocumentTypes(data.document_types, data.document_types_configured)
   } catch (e) {}
   loadPending()
   loadMyFiles()

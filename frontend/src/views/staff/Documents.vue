@@ -25,7 +25,7 @@
       <el-table :data="documents" style="width: 100%" stripe>
         <el-table-column prop="id" label="ID" width="70" align="center" />
         <el-table-column prop="delegation_name" label="来源代表团" width="140" />
-        <el-table-column prop="drafter" label="起草人" width="120" />
+        <el-table-column prop="drafter" label="起草人" width="120" show-overflow-tooltip />
         <el-table-column prop="doc_type" label="类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag size="small">{{ docTypeLabels[row.doc_type] || row.doc_type }}</el-tag>
@@ -233,7 +233,7 @@
       <el-table :data="searchResults" style="width: 100%" stripe @row-click="showSearchDetail">
         <el-table-column prop="title" label="标题" min-width="160" show-overflow-tooltip />
         <el-table-column prop="delegation_name" label="来源代表团" width="140" />
-        <el-table-column prop="drafter" label="起草人" width="120" />
+        <el-table-column prop="drafter" label="起草人" width="120" show-overflow-tooltip />
         <el-table-column prop="doc_type" label="类型" width="100" align="center">
           <template #default="{ row }">
             <el-tag size="small">{{ docTypeLabels[row.doc_type] || row.doc_type }}</el-tag>

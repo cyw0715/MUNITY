@@ -5,7 +5,7 @@
         <el-card>
           <el-form :model="directiveForm" :rules="directiveRules" ref="directiveFormRef">
             <el-form-item label="起草人" prop="drafter">
-              <el-input v-model="directiveForm.drafter" :placeholder="userInfo?.username" />
+              <el-input v-model="directiveForm.drafter" :placeholder="drafterDefault" />
             </el-form-item>
             <el-form-item label="密级" prop="secrecy">
               <el-radio-group v-model="directiveForm.secrecy">
@@ -33,30 +33,40 @@
         <el-card>
           <el-form :model="documentForm" :rules="documentRules" ref="documentFormRef">
             <el-form-item label="起草人" prop="drafter">
-              <el-input v-model="documentForm.drafter" :placeholder="userInfo?.username" />
+              <el-input v-model="documentForm.drafter" :placeholder="drafterDefault" />
             </el-form-item>
             <el-form-item label="文件类型" prop="doc_type">
               <el-select v-model="documentForm.doc_type" style="width: 100%" @change="onDocTypeChange">
-                <el-option label="声明" value="declaration" />
-                <el-option label="备忘录" value="memorandum" />
-                <el-option label="协定" value="agreement" />
+                <el-option v-for="t in documentTypes" :key="docTypeValue(t)" :label="t.name" :value="docTypeValue(t)" />
               </el-select>
             </el-form-item>
 
-            <!-- 协定专属字段 -->
-            <template v-if="documentForm.doc_type === 'agreement'">
-              <el-form-item label="密级" prop="secrecy">
-                <el-radio-group v-model="documentForm.secrecy">
-                  <el-radio value="public">公开</el-radio>
-                  <el-radio value="secret">秘密</el-radio>
-                </el-radio-group>
-              </el-form-item>
-            </template>
+            <!-- 密级：按文件类型配置显示 -->
+            <el-form-item v-if="currentDocTypeCfg?.need_secrecy" label="密级" prop="secrecy">
+              <el-radio-group v-model="documentForm.secrecy">
+                <el-radio value="public">公开</el-radio>
+                <el-radio value="secret">秘密</el-radio>
+              </el-radio-group>
+            </el-form-item>
 
-            <!-- 联署代表团 -->
+            <!-- 涉及部门：按文件类型配置显示 -->
+            <el-form-item v-if="currentDocTypeCfg?.need_departments" label="涉及部门" prop="departments" required>
+              <el-checkbox-group v-model="documentForm.departments">
+                <el-checkbox v-for="dept in departmentOptions" :key="dept" :value="dept">{{ dept }}</el-checkbox>
+              </el-checkbox-group>
+              <el-input
+                v-if="documentForm.departments.includes('其他')"
+                v-model="documentForm.otherDepartment"
+                placeholder="请输入部门名称"
+                style="margin-top: 8px"
+              />
+            </el-form-item>
+
+            <!-- 联署代表团：按文件类型配置显示（强制 / 可选 / 不显示） -->
             <el-form-item
-              :label="'联署代表团' + (documentForm.doc_type === 'agreement' ? '（必选）' : '（可选）')"
-              :prop="documentForm.doc_type === 'agreement' ? 'endorsing_delegations' : ''"
+              v-if="endorsementMode !== 'none'"
+              :label="'联署代表团' + (endorsementMode === 'required' ? '（必选）' : '（可选）')"
+              :prop="endorsementMode === 'required' ? 'endorsing_delegations' : ''"
             >
               <el-select v-model="documentForm.endorsing_delegations" multiple placeholder="选择需要联署的代表团" style="width: 100%">
                 <el-option
@@ -116,11 +126,11 @@
         <el-table-column label="类型" width="80">
           <template #default="{ row }">
             <el-tag :type="row._type === 'directive' ? 'warning' : 'success'" size="small">
-              {{ row._type === 'directive' ? '指令' : docTypeLabels[row.doc_type] || '文件' }}
+              {{ row._type === 'directive' ? '指令' : (docTypeLabel(row.doc_type) || '文件') }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="drafter" label="起草人" width="120" />
+        <el-table-column prop="drafter" label="起草人" width="120" show-overflow-tooltip />
         <el-table-column prop="title" label="标题" min-width="150" show-overflow-tooltip />
         <el-table-column label="密级" width="80">
           <template #default="{ row }">
@@ -161,7 +171,7 @@
       <div v-if="detailDoc" class="doc-detail">
         <div class="detail-item">
           <span class="detail-label">类型：</span>
-          <el-tag>{{ docTypeLabels[detailDoc.doc_type] || detailDoc.doc_type }}</el-tag>
+          <el-tag>{{ docTypeLabel(detailDoc.doc_type) }}</el-tag>
         </div>
         <div class="detail-item">
           <span class="detail-label">起草人：</span>
@@ -172,6 +182,10 @@
           <el-tag :type="detailDoc.secrecy === 'secret' ? 'danger' : 'success'">
             {{ detailDoc.secrecy === 'secret' ? '秘密' : '公开' }}
           </el-tag>
+        </div>
+        <div v-if="detailDoc.departments?.length" class="detail-item">
+          <span class="detail-label">涉及部门：</span>
+          <el-tag v-for="dept in detailDoc.departments" :key="dept" size="small" style="margin-right: 4px">{{ dept }}</el-tag>
         </div>
         <div class="detail-item">
           <span class="detail-label">提交时间：</span>
@@ -192,6 +206,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { resolveDocumentTypes, docTypeValue, findDocType, ENDORSEMENT_NONE } from '../../constants/documentTypes'
 
 const activeTab = ref('directive')
 const loading = ref(false)
@@ -227,6 +242,9 @@ const docTypeLabels = {
   agreement: '协定'
 }
 
+// 本委员会的文件类型配置（由学团在「文件类型」页设置）
+const documentTypes = ref([])
+
 const departmentOptions = ['政治', '经济', '宣传', '军事', '其他']
 
 const directiveForm = ref({
@@ -239,10 +257,12 @@ const directiveForm = ref({
 
 const documentForm = ref({
   drafter: '',
-  doc_type: 'declaration',
+  doc_type: '',
   title: '',
   content: '',
   secrecy: 'public',
+  departments: [],
+  otherDepartment: '',
   endorsing_delegations: []
 })
 
@@ -250,6 +270,25 @@ const myDelegationId = ref(null)
 const availableEndorsingDelegations = computed(() => {
   return allDelegations.value.filter(d => d.id !== myDelegationId.value)
 })
+
+// 起草人默认值：用「代表团 · 席位」而非登录账号，更贴合会议场景
+// 席位缺失时退化为代表团名，再退化为账号
+const drafterDefault = computed(() => {
+  const u = userInfo.value
+  if (!u) return ''
+  const parts = [u.delegation_name, u.seat].filter(Boolean)
+  if (parts.length) return parts.join(' · ')
+  return u.username || ''
+})
+
+// 当前选中文件类型的配置，决定显示哪些字段
+const currentDocTypeCfg = computed(() => findDocType(documentTypes.value, documentForm.value.doc_type))
+const endorsementMode = computed(() => currentDocTypeCfg.value?.endorsement || ENDORSEMENT_NONE)
+
+function docTypeLabel(value) {
+  const t = findDocType(documentTypes.value, value)
+  return t ? t.name : (docTypeLabels[value] || value)
+}
 
 const directiveRules = {}
 
@@ -274,8 +313,15 @@ const filteredRecords = computed(() => {
 })
 
 function onDocTypeChange() {
+  // 切换类型时清掉该类型不启用的字段，避免把上一次的选择带过去
+  const cfg = currentDocTypeCfg.value
   documentForm.value.secrecy = 'public'
   documentForm.value.endorsing_delegations = []
+  documentForm.value.departments = []
+  documentForm.value.otherDepartment = ''
+  if (!cfg) {
+    documentForm.value.doc_type = ''
+  }
 }
 
 function showDocumentDetail(doc) {
@@ -296,6 +342,13 @@ async function loadData() {
     myDocuments.value = docRes.data
     allDelegations.value = delRes.data
     myDelegationId.value = meRes.data.delegation_id
+
+    documentTypes.value = resolveDocumentTypes(meRes.data.document_types, true)
+    // 默认选中第一个可用类型（类型列表由学团配置，可能为空）
+    if (!findDocType(documentTypes.value, documentForm.value.doc_type)) {
+      const first = documentTypes.value[0]
+      documentForm.value.doc_type = first ? docTypeValue(first) : ''
+    }
   } catch (e) {}
 }
 
@@ -303,7 +356,7 @@ async function submitDirective() {
   loading.value = true
   try {
     const payload = {
-      drafter: directiveForm.value.drafter || userInfo.value?.username || '',
+      drafter: directiveForm.value.drafter || drafterDefault.value || '',
       secrecy: directiveForm.value.secrecy,
       content: directiveForm.value.content,
       departments: directiveForm.value.departments.map(d => {
@@ -329,32 +382,52 @@ function handleFileChange(file) {
 }
 
 async function submitDocument() {
-  // 协定必须选择联署代表团
-  if (documentForm.value.doc_type === 'agreement' && (!documentForm.value.endorsing_delegations?.length)) {
-    ElMessage.warning('协定必须选择联署代表团')
+  const cfg = currentDocTypeCfg.value
+  if (!cfg) {
+    ElMessage.warning('当前委员会未配置任何文件类型，请联系学团')
+    return
+  }
+  if (endorsementMode.value === 'required' && !documentForm.value.endorsing_delegations?.length) {
+    ElMessage.warning(`「${cfg.name}」必须选择联署代表团`)
+    return
+  }
+  if (cfg.need_departments && !documentForm.value.departments?.length) {
+    ElMessage.warning(`「${cfg.name}」必须选择涉及部门`)
     return
   }
   await documentFormRef.value.validate()
   loading.value = true
   try {
     const formData = new FormData()
-    formData.append('drafter', documentForm.value.drafter || userInfo.value?.username || '')
+    formData.append('drafter', documentForm.value.drafter || drafterDefault.value || '')
     formData.append('doc_type', documentForm.value.doc_type)
     formData.append('title', documentForm.value.title)
     formData.append('content', documentForm.value.content || '')
     formData.append('secrecy', documentForm.value.secrecy)
-    if (documentForm.value.endorsing_delegations?.length) {
+    if (endorsementMode.value !== 'none' && documentForm.value.endorsing_delegations?.length) {
       formData.append('endorsing_delegations', JSON.stringify(documentForm.value.endorsing_delegations))
+    }
+    if (cfg.need_departments && documentForm.value.departments?.length) {
+      formData.append('departments', JSON.stringify(documentForm.value.departments.map(d => {
+        if (d === '其他' && documentForm.value.otherDepartment) {
+          return documentForm.value.otherDepartment
+        }
+        return d
+      })))
     }
     if (selectedFile.value) {
       formData.append('file', selectedFile.value)
     }
-    
+
     await api.post('/api/delegate/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     ElMessage.success('文件提交成功')
-    documentForm.value = { drafter: '', doc_type: 'declaration', title: '', content: '', secrecy: 'public', endorsing_delegations: [] }
+    const keepType = documentForm.value.doc_type
+    documentForm.value = {
+      drafter: '', title: '', content: '', secrecy: 'public',
+      doc_type: keepType, departments: [], otherDepartment: '', endorsing_delegations: []
+    }
     selectedFile.value = null
     if (uploadRef.value) uploadRef.value.clearFiles()
     loadData()

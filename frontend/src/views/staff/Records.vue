@@ -58,7 +58,7 @@
           <el-table :data="allDocs" style="width: 100%" max-height="600">
             <el-table-column prop="id" label="ID" width="60" />
             <el-table-column prop="delegation_name" label="来源代表团" width="120" />
-            <el-table-column prop="drafter" label="起草人" width="100" />
+            <el-table-column prop="drafter" label="起草人" width="100" show-overflow-tooltip />
             <el-table-column label="类型" width="80">
               <template #default="{ row }">
                 <el-tag size="small">{{ typeLabels[row.doc_type] || '指令' }}</el-tag>

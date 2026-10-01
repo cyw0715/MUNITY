@@ -11,11 +11,18 @@ import logging
 from database import get_db
 from models.user import User
 from models.delegation import Delegation
+from models.committee import Committee
 from models.directive import Directive
 from models.document import Document
 from models.update import Update
 from services import require_role
 from models.agenda import AgendaItem
+from utils.document_types import (
+    find_document_type,
+    resolve_document_types,
+    ENDORSEMENT_REQUIRED,
+    ENDORSEMENT_OPTIONAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +44,18 @@ def get_delegate_info(current_user: User) -> tuple:
     if not current_user.delegation_id:
         raise HTTPException(status_code=400, detail="您尚未分配到任何代表团")
     return current_user.delegation_id
+
+
+def drafter_display_name(current_user: User, delegation) -> str:
+    """起草人默认值：「代表团 · 席位」，比登录账号更贴合会议场景。
+
+    席位或代表团缺失时逐级退化，最终退回账号，保证不会为空。
+    """
+    parts = [getattr(delegation, "name", None), getattr(current_user, "seat", None)]
+    parts = [p for p in parts if p]
+    if parts:
+        return " · ".join(parts)
+    return current_user.username or ""
 
 
 # ==================== 提交指令 ====================
@@ -66,7 +85,7 @@ def submit_directive(
     directive = Directive(
         committee_id=delegation.committee_id,
         delegation_id=delegation_id,
-        drafter=data.drafter or current_user.username,
+        drafter=data.drafter or drafter_display_name(current_user, delegation),
         secrecy=data.secrecy,
         content=data.content,
         departments=data.departments
@@ -100,6 +119,7 @@ async def submit_document(
     title: str = Form(""),
     content: str = Form(""),
     secrecy: str = Form("public"),
+    departments: str = Form("[]"),
     endorsing_delegations: str = Form("[]"),
     file: UploadFile = File(None),
     current_user: User = Depends(require_role("delegate")),
@@ -110,24 +130,46 @@ async def submit_document(
     if not delegation:
         raise HTTPException(status_code=400, detail="代表团不存在")
 
-    # 解析联署代表团
     import json
+
+    # 该委员会的文件类型配置决定本次提交需要哪些字段
+    committee = db.query(Committee).filter(Committee.id == delegation.committee_id).first()
+    type_cfg = find_document_type(committee, doc_type)
+    if not type_cfg:
+        available = "、".join(t["name"] for t in resolve_document_types(committee)) or "（无）"
+        raise HTTPException(status_code=400, detail=f"未知的文件类型，当前可选：{available}")
+
+    need_endorsement = type_cfg["endorsement"] != "none"
+    require_endorsement = type_cfg["endorsement"] == ENDORSEMENT_REQUIRED
+
+    # 解析联署代表团；类型不需要联署时忽略传入值
     endorsing_list = json.loads(endorsing_delegations) if endorsing_delegations else []
+    if not need_endorsement:
+        endorsing_list = []
 
     # 非阁首代表提交需联署文件时，自动将本代表团加入联署名单（使其阁首能审批）
     if endorsing_list and not current_user.is_leader:
         if delegation_id not in endorsing_list:
             endorsing_list.insert(0, delegation_id)
 
+    if require_endorsement and not endorsing_list:
+        raise HTTPException(status_code=400, detail=f"「{type_cfg['name']}」必须选择联署代表团")
+
+    # 解析涉及部门；类型不启用该项时不校验也不落库
+    department_list = []
+    if type_cfg["need_departments"]:
+        department_list = json.loads(departments) if departments else []
+        if not department_list:
+            raise HTTPException(status_code=400, detail=f"「{type_cfg['name']}」必须选择涉及部门")
+    # 类型未启用密级时一律按公开处理
+    if not type_cfg["need_secrecy"]:
+        secrecy = "public"
+
     endorsement_data = {}
     now_str = datetime.utcnow().isoformat()
     if endorsing_list:
         for ed_id in endorsing_list:
             endorsement_data[str(ed_id)] = {"status": "pending", "note": "", "updated_at": now_str}
-
-    # 协定必须有联署
-    if doc_type == "agreement" and not endorsing_list:
-        raise HTTPException(status_code=400, detail="协定必须选择联署代表团")
 
     # 处理文件上传
     file_path = None
@@ -144,13 +186,14 @@ async def submit_document(
     document = Document(
         committee_id=delegation.committee_id,
         delegation_id=delegation_id,
-        drafter=drafter or current_user.username,
+        drafter=drafter or drafter_display_name(current_user, delegation),
         doc_type=doc_type,
         title=title,
         content=content,
+        departments=department_list or None,
         file_path=file_path,
         signing_countries=None,
-        secrecy=secrecy if doc_type == "agreement" else "public",
+        secrecy=secrecy,
         endorsing_delegations=endorsing_list if endorsing_list else None,
         endorsement_data=endorsement_data if endorsement_data else None
     )
@@ -224,6 +267,7 @@ def list_endorsements(
             "drafter": d.drafter,
             "delegation_name": del_obj.name if del_obj else "未知",
             "content": d.content,
+            "departments": d.departments or [],
             "file_path": d.file_path,
             "secrecy": d.secrecy or "public",
             "status": my_status.get("status", "pending"),
@@ -490,7 +534,9 @@ def get_me(current_user: User = Depends(require_role("delegate")), db: Session =
         "is_leader": current_user.is_leader,
         "delegation_id": current_user.delegation_id,
         "delegation_name": delegation.name if delegation else None,
-        "committee_features": committee.features if committee else []
+        "committee_features": committee.features if committee else [],
+        "document_types": resolve_document_types(committee),
+        "document_types_configured": bool(committee.document_types_configured) if committee else False
     }
 # ==================== 文件上传/下载 ====================
 
@@ -516,7 +562,7 @@ async def upload_document(
     document = Document(
         committee_id=delegation.committee_id,
         delegation_id=delegation_id,
-        drafter=current_user.username,
+        drafter=drafter_display_name(current_user, delegation),
         doc_type="file",
         title=file.filename,
         content="",

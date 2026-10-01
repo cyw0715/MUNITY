@@ -7,7 +7,7 @@
     <el-table :data="directives" style="width: 100%">
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="delegation_name" label="来源代表团" width="120" />
-      <el-table-column prop="drafter" label="起草人" width="100" />
+      <el-table-column prop="drafter" label="起草人" width="100" show-overflow-tooltip />
       <el-table-column prop="secrecy" label="密级" width="80">
         <template #default="{ row }">
           <el-tag :type="row.secrecy === 'secret' ? 'danger' : 'success'" size="small">
