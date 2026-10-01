@@ -31,7 +31,11 @@
             服务器资源监控
           </span>
           <div class="monitor-controls">
-            <el-radio-group v-model="scope" size="small" @change="fetchMonitor">
+            <span v-if="scope === 'realtime'" class="live-badge" :class="{ offline: !wsConnected }">
+              <i class="live-dot" />{{ wsConnected ? '实时' : '重连中' }}
+            </span>
+            <el-radio-group v-model="scope" size="small" @change="handleScopeChange">
+              <el-radio-button value="realtime">实时</el-radio-button>
               <el-radio-button value="1m">最近1分钟</el-radio-button>
               <el-radio-button value="24h">过去24小时</el-radio-button>
             </el-radio-group>
@@ -119,6 +123,38 @@
           </div>
         </div>
       </div>
+
+      <!-- 实时滚动图表 -->
+      <div v-if="scope === 'realtime'" class="realtime-panel">
+        <div class="realtime-header">
+          <span class="realtime-title">实时趋势（最近 2 分钟）</span>
+          <span class="realtime-meta">
+            每 {{ realtimeInterval }} 秒推送 · 已采集 {{ realtimeSeries.length }} 个采样点
+          </span>
+        </div>
+        <div class="realtime-chart">
+          <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none" class="sparkline-svg">
+            <defs>
+              <linearGradient id="rt-cpu-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#5b92e5" stop-opacity="0.35" />
+                <stop offset="100%" stop-color="#5b92e5" stop-opacity="0.02" />
+              </linearGradient>
+              <linearGradient id="rt-mem-grad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#e84393" stop-opacity="0.35" />
+                <stop offset="100%" stop-color="#e84393" stop-opacity="0.02" />
+              </linearGradient>
+            </defs>
+            <path :d="rtCpuAreaPath" fill="url(#rt-cpu-grad)" />
+            <path :d="rtMemAreaPath" fill="url(#rt-mem-grad)" />
+            <path :d="rtCpuPath" fill="none" stroke="#5b92e5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path :d="rtMemPath" fill="none" stroke="#e84393" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div class="realtime-legend">
+          <span><i class="legend-dot" style="background:#5b92e5" />CPU</span>
+          <span><i class="legend-dot" style="background:#e84393" />内存</span>
+        </div>
+      </div>
     </el-card>
 
     <!-- 快捷操作 -->
@@ -144,6 +180,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../../api'
 import { OfficeBuilding, User, Plus, Monitor, Refresh } from '@element-plus/icons-vue'
+import { useWebSocket } from '../../composables/useWebSocket'
 
 const stats = ref({ committees: 0, staff: 0 })
 const monitorData = ref({ current: null })
@@ -151,6 +188,62 @@ const scope = ref('1m')
 const chartWidth = 240
 const chartHeight = 48
 let refreshTimer = null
+
+// ===== 实时监控 =====
+const { on: onWs, off: offWs, isConnected: wsConnected } = useWebSocket()
+const realtimeSeries = ref([])      // [{ t, cpu, mem }]
+const realtimeInterval = ref(2)     // 推送间隔（秒），由后端下发
+const REALTIME_POINTS = 60          // 图表保留点数：60 × 2s = 2 分钟
+
+function handleSystemMetrics(msg) {
+  const s = msg?.data
+  if (!s) return
+  if (msg.interval) realtimeInterval.value = msg.interval
+  monitorData.value = { ...monitorData.value, current: s }
+
+  const next = realtimeSeries.value.concat({
+    t: s.timestamp ?? Date.now() / 1000,
+    cpu: s.cpu_percent ?? 0,
+    mem: s.mem_percent ?? 0
+  })
+  realtimeSeries.value = next.length > REALTIME_POINTS ? next.slice(-REALTIME_POINTS) : next
+}
+
+async function startRealtime() {
+  onWs('system_metrics', handleSystemMetrics)
+  try {
+    const res = await api.get('/api/system/monitor/realtime')
+    if (res.data?.interval) realtimeInterval.value = res.data.interval
+    if (res.data?.current) monitorData.value = { current: res.data.current }
+    const series = (res.data?.series || []).map(s => ({
+      t: s.timestamp,
+      cpu: s.cpu_percent ?? 0,
+      mem: s.mem_percent ?? 0
+    }))
+    realtimeSeries.value = series.length > REALTIME_POINTS ? series.slice(-REALTIME_POINTS) : series
+  } catch (e) { console.error(e) }
+}
+
+function stopRealtime() {
+  offWs('system_metrics', handleSystemMetrics)
+  realtimeSeries.value = []
+}
+
+function handleScopeChange(val) {
+  if (val === 'realtime') {
+    startRealtime()
+  } else {
+    stopRealtime()
+    fetchMonitor()
+  }
+}
+
+const rtCpuData = computed(() => realtimeSeries.value.map(p => [p.t, p.cpu]))
+const rtMemData = computed(() => realtimeSeries.value.map(p => [p.t, p.mem]))
+const rtCpuPath = computed(() => buildPath(rtCpuData.value))
+const rtMemPath = computed(() => buildPath(rtMemData.value))
+const rtCpuAreaPath = computed(() => buildAreaPath(rtCpuData.value))
+const rtMemAreaPath = computed(() => buildAreaPath(rtMemData.value))
 
 const chartData = computed(() => {
   const cpu = monitorData.value.cpu || []
@@ -226,6 +319,7 @@ function formatBytes(bytes) {
 }
 
 async function fetchMonitor() {
+  if (scope.value === 'realtime') return  // 实时模式由 WebSocket 推送驱动
   try {
     const res = await api.get(`/api/system/monitor?scope=${scope.value}`)
     monitorData.value = res.data
@@ -242,11 +336,14 @@ onMounted(async () => {
     stats.value.staff = sRes.data.length
   } catch (e) { console.error(e) }
   fetchMonitor()
-  // 每30秒自动刷新当前数据
+  // 每30秒自动刷新当前数据（实时模式自动跳过）
   refreshTimer = setInterval(fetchMonitor, 30000)
 })
 
-onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
+  offWs('system_metrics', handleSystemMetrics)
+})
 </script>
 
 <style scoped>
@@ -308,6 +405,40 @@ onUnmounted(() => { if (refreshTimer) clearInterval(refreshTimer) })
 /* 折线图 */
 .sparkline { margin-top: 10px; height: 48px; }
 .sparkline-svg { width: 100%; height: 100%; }
+
+/* ===== 实时监控 ===== */
+.live-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: #16a34a;
+  background: rgba(22, 163, 74, 0.1);
+  padding: 3px 10px; border-radius: 999px;
+}
+.live-badge.offline { color: #e6a23c; background: rgba(230, 162, 60, 0.12); }
+.live-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: currentColor;
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+.live-badge.offline .live-dot { animation: none; }
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
+}
+
+.realtime-panel {
+  margin-top: 20px; padding: 16px;
+  background: #f8fafc; border-radius: 12px; border: 1px solid #eef2f6;
+}
+.realtime-header {
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 8px; margin-bottom: 10px;
+}
+.realtime-title { font-size: 13px; font-weight: 600; color: #475569; }
+.realtime-meta { font-size: 12px; color: #94a3b8; }
+.realtime-chart { height: 90px; }
+.realtime-legend { display: flex; gap: 16px; margin-top: 10px; font-size: 12px; color: #64748b; }
+.realtime-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend-dot { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 
 /* 快捷操作 */
 .card-header:last-of-type { margin-bottom: 0; }

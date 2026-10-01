@@ -7,20 +7,12 @@
             <el-form-item label="起草人" prop="drafter">
               <el-input v-model="directiveForm.drafter" :placeholder="userInfo?.username" />
             </el-form-item>
-            <template v-if="hasDirectivePoints">
-              <el-form-item label="行政点数" prop="admin_points">
-                <el-input-number v-model="directiveForm.admin_points" :min="0" />
-                <span style="margin-left: 12px; color: #909399">
-                  公开至少1点，秘密至少2点
-                </span>
-              </el-form-item>
-              <el-form-item label="密级" prop="secrecy">
-                <el-radio-group v-model="directiveForm.secrecy">
-                  <el-radio value="public">公开</el-radio>
-                  <el-radio value="secret">秘密</el-radio>
-                </el-radio-group>
-              </el-form-item>
-            </template>
+            <el-form-item label="密级" prop="secrecy">
+              <el-radio-group v-model="directiveForm.secrecy">
+                <el-radio value="public">公开</el-radio>
+                <el-radio value="secret">秘密</el-radio>
+              </el-radio-group>
+            </el-form-item>
             <el-form-item label="涉及部门" prop="departments" required>
               <el-checkbox-group v-model="directiveForm.departments">
                 <el-checkbox v-for="dept in departmentOptions" :key="dept" :value="dept">{{ dept }}</el-checkbox>
@@ -196,7 +188,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
@@ -239,7 +231,6 @@ const departmentOptions = ['政治', '经济', '宣传', '军事', '其他']
 
 const directiveForm = ref({
   drafter: '',
-  admin_points: 0,
   secrecy: 'public',
   content: '',
   departments: [],
@@ -256,14 +247,11 @@ const documentForm = ref({
 })
 
 const myDelegationId = ref(null)
-const hasDirectivePoints = computed(() => (userInfo.value?.committee_features || []).includes('directive_points'))
 const availableEndorsingDelegations = computed(() => {
   return allDelegations.value.filter(d => d.id !== myDelegationId.value)
 })
 
-const directiveRules = {
-  admin_points: [{ required: true, message: '请输入行政点数', trigger: 'blur' }]
-}
+const directiveRules = {}
 
 const documentRules = {
   doc_type: [{ required: true, message: '请选择文件类型', trigger: 'change' }],
@@ -316,7 +304,6 @@ async function submitDirective() {
   try {
     const payload = {
       drafter: directiveForm.value.drafter || userInfo.value?.username || '',
-      admin_points: directiveForm.value.admin_points,
       secrecy: directiveForm.value.secrecy,
       content: directiveForm.value.content,
       departments: directiveForm.value.departments.map(d => {
@@ -328,7 +315,7 @@ async function submitDirective() {
     }
     await api.post('/api/delegate/directives', payload)
     ElMessage.success('指令提交成功')
-    directiveForm.value = { drafter: '', admin_points: 0, secrecy: 'public', content: '', departments: [], otherDepartment: '' }
+    directiveForm.value = { drafter: '', secrecy: 'public', content: '', departments: [], otherDepartment: '' }
     loadData()
   } catch (e) {
     ElMessage.error(e.response?.data?.detail || '提交失败')
@@ -378,18 +365,32 @@ async function submitDocument() {
   }
 }
 
-function downloadFile(filename) {
+async function downloadFile(filename) {
   const token = localStorage.getItem('token')
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await fetch(`/api/delegate/download/${encodeURIComponent(filename)}`, { headers })
+  if (!res.ok) {
+    ElMessage.error('下载失败')
+    return
+  }
+  const blob = await res.blob()
   const link = document.createElement('a')
-  link.href = `/api/delegate/download/${filename}?token=${token}`
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
   link.download = filename
   link.click()
 }
 
+const ws = useWebSocket()
+
 onMounted(() => {
   loadData()
-  const ws = useWebSocket()
   ws.on('documents_changed', loadData)
+})
+
+// 移除监听，避免路由往返后同一条消息触发多次 loadData
+onUnmounted(() => {
+  ws.off('documents_changed', loadData)
 })
 </script>
 

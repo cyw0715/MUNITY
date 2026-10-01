@@ -62,7 +62,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "munity-os-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "admin123"
+DEFAULT_ADMIN_PASSWORD = __import__("os").environ.get("DEFAULT_ADMIN_PASSWORD", "")
 ''')
 
 # database.py
@@ -193,7 +193,6 @@ class Directive(Base):
     committee_id = Column(Integer, ForeignKey("committees.id"), nullable=False)
     delegation_id = Column(Integer, ForeignKey("delegations.id"), nullable=False)
     drafter = Column(String(100), nullable=False)
-    admin_points = Column(Integer, default=0)
     secrecy = Column(String(20), default="public")
     content = Column(Text, nullable=True)
     status = Column(String(20), default="unread")
@@ -361,7 +360,7 @@ write_file(os.path.join(frontend_dir, "dist/index.html"), '''<!DOCTYPE html>
         <p class="subtitle">模拟联合国会议系统</p>
         <div class="error" id="error"></div>
         <input type="text" id="username" placeholder="用户名" value="admin">
-        <input type="password" id="password" placeholder="密码" value="admin123">
+        <input type="password" id="password" placeholder="密码" placeholder="密码">
         <button onclick="login()">登录</button>
     </div>
     <script>
@@ -441,7 +440,7 @@ print("\n" + "=" * 40)
 print("  部署完成！")
 print("=" * 40)
 print(f"\n访问地址：http://YOUR_SERVER_IP")
-print("\n默认管理员：admin / admin123")
+print("\\n默认管理员：admin（口令见 DEFAULT_ADMIN_PASSWORD 或启动随机密码）")
 print("\n常用命令：")
 print("  查看状态：sudo systemctl status munity")
 print("  重启后端：sudo systemctl restart munity")

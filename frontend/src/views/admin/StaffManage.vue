@@ -9,7 +9,7 @@
       </template>
 
       <el-table :data="staffList" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="80" />
+
         <el-table-column prop="username" label="用户名" />
         <el-table-column label="所属委员会">
           <template #default="{ row }">
@@ -106,28 +106,21 @@ function getStaffCommittees(staffId) {
   return staffCommitteesMap.value[staffId] || []
 }
 
-async function loadStaffCommittees() {
-  const map = {}
-  // 并行加载每个学团的委员会列表
-  const results = await Promise.all(
-    staffList.value.map(s =>
-      api.get(`/api/admin/staff/${s.id}/committees`).then(r => ({ id: s.id, data: r.data })).catch(() => null)
-    )
-  )
-  for (const r of results) {
-    if (r) map[r.id] = r.data || []
-  }
-  staffCommitteesMap.value = map
-}
-
 async function loadData() {
-  const [staffRes, committeeRes] = await Promise.all([
+  // 学团-委员会映射改为后端单次聚合返回，避免 N 个并发请求打满连接池
+  const [staffRes, committeeRes, mapRes] = await Promise.all([
     api.get('/api/admin/staff'),
-    api.get('/api/admin/committees')
+    api.get('/api/admin/committees'),
+    api.get('/api/admin/staff-committees')
   ])
   staffList.value = staffRes.data
   committees.value = committeeRes.data
-  await loadStaffCommittees()
+
+  const map = {}
+  for (const [sid, list] of Object.entries(mapRes.data || {})) {
+    map[Number(sid)] = list || []
+  }
+  staffCommitteesMap.value = map
 }
 
 function showAddDialog() {

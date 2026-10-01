@@ -145,10 +145,19 @@ function toggleFullscreen() {
   }
 }
 
+function handleFullscreenChange() {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
+// WS 监听器需持有引用才能在卸载时移除，否则路由往返会不断叠加
+let wsRef = null
+let wsHandlersRegistered = false
+const onWsAsyncMessage = () => { notifications.value.messages = true }
+const onWsDocumentsChanged = () => { notifications.value.endorsements = true }
+const onWsEndorsementNew = () => { notifications.value.endorsements = true }
+
 onMounted(async () => {
-  document.addEventListener('fullscreenchange', () => {
-    isFullscreen.value = !!document.fullscreenElement
-  })
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
   try {
     const { data } = await api.get('/api/delegate/me')
     delegationName.value = data.delegation_name
@@ -156,15 +165,23 @@ onMounted(async () => {
   startPolling()
   // WS 实时闪烁通知
   import('../../composables/useWebSocket').then(({ useWebSocket }) => {
-    const ws = useWebSocket()
-    ws.on('new_async_message', () => { notifications.value.messages = true })
-    ws.on('documents_changed', () => { notifications.value.endorsements = true })
-    ws.on('endorsement_new', () => { notifications.value.endorsements = true })
+    wsRef = useWebSocket()
+    wsRef.on('new_async_message', onWsAsyncMessage)
+    wsRef.on('documents_changed', onWsDocumentsChanged)
+    wsRef.on('endorsement_new', onWsEndorsementNew)
+    wsHandlersRegistered = true
   })
 })
 
 onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
   stopPolling()
+  if (wsRef && wsHandlersRegistered) {
+    wsRef.off('new_async_message', onWsAsyncMessage)
+    wsRef.off('documents_changed', onWsDocumentsChanged)
+    wsRef.off('endorsement_new', onWsEndorsementNew)
+    wsHandlersRegistered = false
+  }
 })
 </script>
 

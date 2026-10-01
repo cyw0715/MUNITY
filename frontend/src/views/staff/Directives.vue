@@ -8,7 +8,6 @@
       <el-table-column prop="id" label="ID" width="60" />
       <el-table-column prop="delegation_name" label="来源代表团" width="120" />
       <el-table-column prop="drafter" label="起草人" width="100" />
-      <el-table-column prop="admin_points" label="行政点数" width="90" />
       <el-table-column prop="secrecy" label="密级" width="80">
         <template #default="{ row }">
           <el-tag :type="row.secrecy === 'secret' ? 'danger' : 'success'" size="small">
@@ -56,7 +55,6 @@
     <div v-if="detailItem">
       <p><strong>来源代表团：</strong>{{ detailItem.delegation_name }}</p>
       <p><strong>起草人：</strong>{{ detailItem.drafter }}</p>
-      <p><strong>行政点数：</strong>{{ detailItem.admin_points }}</p>
       <p><strong>密级：</strong>
         <el-tag :type="detailItem.secrecy === 'secret' ? 'danger' : 'success'" size="small">
           {{ detailItem.secrecy === 'secret' ? '秘密' : '公开' }}

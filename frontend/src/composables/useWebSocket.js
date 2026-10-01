@@ -7,6 +7,8 @@ let reconnectTimer = null
 let heartbeatTimer = null
 const listeners = new Map()
 const isConnected = ref(false)
+// 当前 socket 对应的用户 id，用于识别「登出后换号登录」需要重建连接
+let connectedUserId = null
 
 /**
  * WebSocket 连接管理 composable
@@ -17,12 +19,19 @@ export function useWebSocket() {
   let baseUrl = ''
 
   function connect() {
-    if (ws && ws.readyState === WebSocket.OPEN) return
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      if (connectedUserId === authStore.user?.id) return
+      // 身份已变（登出后换号登录）：旧连接是上一个用户的，必须重建
+      ws.close()
+      ws = null
+    }
     if (!authStore.user?.id) return
+    connectedUserId = authStore.user.id
 
-    // 动态获取 WebSocket URL
+    // 动态获取 WebSocket URL（携带 JWT，服务端校验 user_id 一致）
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    baseUrl = `${protocol}//${window.location.host}/api/ws/${authStore.user.id}`
+    const token = authStore.token || localStorage.getItem('token') || ''
+    baseUrl = `${protocol}//${window.location.host}/api/ws/${authStore.user.id}?access_token=${encodeURIComponent(token)}`
 
     try {
       ws = new WebSocket(baseUrl)
@@ -103,6 +112,7 @@ export function useWebSocket() {
       ws.close()
       ws = null
     }
+    connectedUserId = null
     isConnected.value = false
   }
 

@@ -136,12 +136,45 @@ def msg_to_dict(msg: AsyncMessage, db: Session) -> dict:
 
 @router.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int):
-    """WebSocket 连接端点（支持多委员会学团）"""
-    committee_ids = None
+    """WebSocket 连接端点（支持多委员会学团）
+
+    鉴权：连接时必须携带有效 JWT（Authorization: Bearer / access_token query / 首条 auth 消息），
+    且 token 中的 user_id 必须与路径一致，否则拒绝连接。
+    """
+    from services import get_user_from_token, decode_token
     from database import SessionLocal
+
+    token = (
+        websocket.query_params.get("access_token")
+        or websocket.query_params.get("token")
+        or ""
+    )
+    auth_header = websocket.headers.get("authorization") or ""
+    if not token and auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+
+    if not token:
+        await websocket.close(code=4401)
+        return
+
+    try:
+        payload = decode_token(token)
+        token_uid = int(payload.get("user_id"))
+    except Exception:
+        await websocket.close(code=4401)
+        return
+
+    if token_uid != user_id:
+        await websocket.close(code=4403)
+        return
+
+    committee_ids = None
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            await websocket.close(code=4401)
+            return
         if user:
             # 优先从 staff_committees 表获取
             from sqlalchemy import text
@@ -157,7 +190,8 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
             else:
                 committee_ids = [user.committee_id] if user.committee_id else None
     except Exception:
-        pass
+        await websocket.close(code=4500)
+        return
     finally:
         db.close()
 
@@ -251,7 +285,7 @@ def staff_available_delegates(
 
 
 @router.post("/staff/async-messages", response_model=AsyncMessageOut)
-def staff_create_async_message(
+async def staff_create_async_message(
     data: AsyncMessageCreate,
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
@@ -308,25 +342,23 @@ def staff_create_async_message(
     push_msg = created_messages[0]
     db.refresh(push_msg)
 
-    # WebSocket 推送
+    # WebSocket 推送。
+    # 必须用 await 直接在当前（服务主）事件循环上发送：WebSocket 对象绑定在主循环，
+    # 另起 asyncio.new_event_loop() 去 send 会抛错并被吞掉，导致通知静默失效。
     try:
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         ws_payload = {
             "type": "new_async_message",
             "message": msg_to_dict(push_msg, db)
         }
         if recv_ids:
             for uid in recv_ids:
-                loop.run_until_complete(ws_manager.send_to_user(uid, ws_payload))
+                await ws_manager.send_to_user(uid, ws_payload)
         if recv_dlg_ids:
             for did in recv_dlg_ids:
-                loop.run_until_complete(ws_manager.send_to_delegation(did, ws_payload, db))
+                await ws_manager.send_to_delegation(did, ws_payload, db)
         if data.visibility == "public" or (not recv_ids and not recv_dlg_ids):
             for cid in committee_ids:
-                loop.run_until_complete(ws_manager.broadcast_committee(cid, ws_payload))
-        loop.close()
+                await ws_manager.broadcast_committee(cid, ws_payload)
     except Exception as e:
         logger.warning(f"WebSocket 推送失败（消息已保存）: {e}")
 
@@ -354,6 +386,20 @@ def staff_delete_async_message(
 
 # ==================== 代表端 API ====================
 
+def _delegate_committee_id(db: Session, user: User) -> int:
+    """解析代表所属委员会。
+
+    代表的委员会归属来自其代表团，而非 User.committee_id —— 后者在创建代表时
+    从未写入，恒为 NULL，用它过滤会让代表查不到任何消息。
+    """
+    if not user.delegation_id:
+        raise HTTPException(status_code=400, detail="您尚未分配到任何代表团")
+    delegation = db.query(Delegation).filter(Delegation.id == user.delegation_id).first()
+    if not delegation:
+        raise HTTPException(status_code=400, detail="代表团不存在")
+    return delegation.committee_id
+
+
 @router.get("/delegate/async-messages", response_model=List[AsyncMessageOut])
 def delegate_list_async_messages(
     current_user: User = Depends(require_role("delegate")),
@@ -361,11 +407,12 @@ def delegate_list_async_messages(
 ):
     """代表查看自己可见的非对称消息"""
     user = current_user
+    committee_id = _delegate_committee_id(db, user)
     # 获取同委员会的所有可见消息
     messages = db.query(AsyncMessage).filter(
-        AsyncMessage.committee_id == current_user.committee_id
+        AsyncMessage.committee_id == committee_id
     ).order_by(AsyncMessage.created_at.desc()).all()
-    
+
     # 过滤可见性
     result = []
     for m in messages:
@@ -385,12 +432,17 @@ def delegate_mark_read(
     db: Session = Depends(get_db)
 ):
     """代表标记消息为已读"""
+    committee_id = _delegate_committee_id(db, current_user)
     msg = db.query(AsyncMessage).filter(
         AsyncMessage.id == message_id,
-        AsyncMessage.committee_id == current_user.committee_id
+        AsyncMessage.committee_id == committee_id
     ).first()
     if not msg:
         raise HTTPException(status_code=404, detail="消息不存在")
+
+    # 可见性校验：不可见（他人私密消息）不得标记已读
+    if not is_message_visible_to(msg, current_user.id, current_user.delegation_id):
+        raise HTTPException(status_code=403, detail="无权访问该消息")
     
     # 更新 read_by 数组
     try:
@@ -423,8 +475,9 @@ def delegate_unread_count(
 ):
     """代表获取未读消息数量"""
     user = current_user
+    committee_id = _delegate_committee_id(db, user)
     messages = db.query(AsyncMessage).filter(
-        AsyncMessage.committee_id == current_user.committee_id
+        AsyncMessage.committee_id == committee_id
     ).all()
     
     unread = 0

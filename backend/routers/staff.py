@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -19,7 +20,7 @@ from models.document import Document
 from models.update import Update
 from schemas.user import UserOut
 from schemas.delegation import DelegationBase, DelegationCreate, DelegationOut
-from services import hash_password, require_role
+from services import hash_password, require_role, validate_password_strength
 
 router = APIRouter(prefix="/api/staff", tags=["学团"])
 
@@ -134,6 +135,7 @@ def create_delegate(
         if not delegation:
             raise HTTPException(status_code=400, detail="代表团不存在或不属于当前委员会")
 
+    validate_password_strength(user_data.password)
     delegate = User(
         username=user_data.username,
         password_hash=hash_password(user_data.password),
@@ -212,6 +214,14 @@ def delete_delegate(
     delegate = db.query(User).filter(User.id == delegate_id, User.role == "delegate").first()
     if not delegate:
         raise HTTPException(status_code=404, detail="代表不存在")
+    # 验证代表属于当前委员会，避免跨委员会删除
+    if delegate.delegation_id:
+        delegation = db.query(Delegation).filter(
+            Delegation.id == delegate.delegation_id,
+            Delegation.committee_id == committee_id
+        ).first()
+        if not delegation:
+            raise HTTPException(status_code=403, detail="无权操作此代表")
     db.delete(delegate)
     db.commit()
     return {"message": "删除成功"}
@@ -1265,7 +1275,6 @@ def list_directives(current_user: User = Depends(require_role("staff")), db: Ses
             "delegation_id": d.delegation_id,
             "delegation_name": delegation.name if delegation else "未知",
             "drafter": d.drafter,
-            "admin_points": d.admin_points,
             "secrecy": d.secrecy,
             "content": d.content,
             "departments": d.departments or [],
@@ -1715,7 +1724,8 @@ def restore_archive(
 ):
     """从存档恢复"""
     committee_id = get_staff_committee(current_user)
-    filepath = os.path.join(ARCHIVE_DIR, filename)
+    from utils.security import safe_join
+    filepath = safe_join(ARCHIVE_DIR, filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="存档不存在")
 
@@ -1773,18 +1783,8 @@ async def upload_file(
     db: Session = Depends(get_db)
 ):
     """主席团上传文件"""
-    if not file.filename.endswith('.docx'):
-        raise HTTPException(status_code=400, detail="只支持 .docx 文件")
-    
-    # 生成唯一文件名
-    filename = f"{uuid.uuid4().hex}_{file.filename}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
-    
-    # 保存文件
-    content = await file.read()
-    with open(filepath, "wb") as f:
-        f.write(content)
-    
+    from utils.security import save_upload_safely
+    filename = await save_upload_safely(file, UPLOAD_DIR, uuid.uuid4().hex)
     return {"filename": filename, "original_name": file.filename}
 
 
@@ -1802,14 +1802,8 @@ async def publish_with_file(
     
     file_path = None
     if file and file.filename:
-        if not file.filename.endswith('.docx'):
-            raise HTTPException(status_code=400, detail="只支持 .docx 文件")
-        filename = f"{uuid.uuid4().hex}_{file.filename}"
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        file_content = await file.read()
-        with open(filepath, "wb") as f:
-            f.write(file_content)
-        file_path = filename
+        from utils.security import save_upload_safely
+        file_path = await save_upload_safely(file, UPLOAD_DIR, uuid.uuid4().hex)
     
     doc_type_labels = {"declaration": "声明", "memorandum": "备忘录", "agreement": "协定"}
     type_label = doc_type_labels.get(doc_type, doc_type)
@@ -1847,39 +1841,42 @@ async def publish_with_file(
 def download_file(
     filename: str,
     token: str = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
 ):
-    """下载文件（支持 query parameter 传 token）"""
-    if token:
-        try:
-            from jose import jwt
-            from config import SECRET_KEY, ALGORITHM
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = payload.get("user_id")
-            if not user_id:
-                raise HTTPException(status_code=401, detail="无效的认证凭据")
-            user = db.query(User).filter(User.id == user_id).first()
-            if not user or user.role != "staff":
-                raise HTTPException(status_code=403, detail="权限不足")
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(status_code=401, detail="无效的认证凭据")
-    else:
+    """下载文件（优先 Authorization 头，兼容 query token；校验归属）"""
+    from utils.security import safe_join, original_display_name
+    from services import get_user_from_token
+
+    raw_token = credentials.credentials if credentials else token
+    if not raw_token:
         raise HTTPException(status_code=401, detail="缺少认证凭据")
 
-    filepath = os.path.join(UPLOAD_DIR, filename)
+    user = get_user_from_token(raw_token, db)
+    if user.role not in ("staff", "admin"):
+        raise HTTPException(status_code=403, detail="权限不足")
+
+    filepath = safe_join(UPLOAD_DIR, filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="文件不存在")
-    
-    # 提取原始文件名（去掉 uuid 前缀）
-    original_name = filename
-    if '_' in filename:
-        # 格式: {uuid}_{original_name}
-        parts = filename.split('_', 1)
-        if len(parts) == 2 and len(parts[0]) == 32:
-            original_name = parts[1]
-    
+
+    # 归属校验：学团只能下载本委员会相关文件；未入库的临时上传放行（UUID 不可猜测）
+    if user.role == "staff":
+        from models.document import Document
+        from models.update import Update
+
+        staff_committee_ids = get_staff_committee_list(user)
+        owned = db.query(Document).filter(Document.file_path == filename).all()
+        owned += db.query(Update).filter(Update.file_path == filename).all()
+        if owned:
+            allowed = any(
+                (getattr(item, "committee_id", None) in staff_committee_ids)
+                for item in owned
+            )
+            if not allowed:
+                raise HTTPException(status_code=403, detail="无权下载此文件")
+
+    original_name = original_display_name(filename)
     return FileResponse(filepath, filename=original_name)
 
 

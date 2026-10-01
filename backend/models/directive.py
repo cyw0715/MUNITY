@@ -10,7 +10,6 @@ class Directive(Base):
     committee_id = Column(Integer, ForeignKey("committees.id"), nullable=False)
     delegation_id = Column(Integer, ForeignKey("delegations.id"), nullable=False)
     drafter = Column(String(100), nullable=False)
-    admin_points = Column(Integer, default=0)
     secrecy = Column(String(20), default="public")  # public / secret
     content = Column(Text, nullable=True)
     departments = Column(JSON, nullable=True)  # 涉及部门列表

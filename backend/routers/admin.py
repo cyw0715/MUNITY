@@ -9,7 +9,7 @@ from models.delegation import Delegation
 from schemas.user import UserCreate, UserOut
 from schemas.committee import CommitteeCreate, CommitteeOut, CommitteeUpdate
 from schemas.delegation import DelegationCreate, DelegationOut
-from services import hash_password, require_role
+from services import hash_password, require_role, validate_password_strength
 
 router = APIRouter(prefix="/api/admin", tags=["管理员"])
 
@@ -32,6 +32,7 @@ def create_staff(
     if existing:
         raise HTTPException(status_code=400, detail="用户名已存在")
 
+    validate_password_strength(user_data.password)
     staff = User(
         username=user_data.username,
         password_hash=hash_password(user_data.password),
@@ -46,11 +47,9 @@ def create_staff(
     # 同时写入 staff_committees 关联表（如果指定了委员会）
     if user_data.committee_id:
         from sqlalchemy import text
-        from database import engine
         ins = text("INSERT OR IGNORE INTO staff_committees (staff_id, committee_id) VALUES (:sid, :cid)")
-        with engine.connect() as conn:
-            conn.execute(ins, {"sid": staff.id, "cid": user_data.committee_id})
-            conn.commit()
+        db.execute(ins, {"sid": staff.id, "cid": user_data.committee_id})
+        db.commit()
 
     return staff
 
@@ -164,6 +163,17 @@ def delete_committee(
     # 删除点名
     db.query(RollCall).filter(RollCall.committee_id == committee_id).delete()
 
+    # 删除投票（先删投票记录，再删投票，避免遗留孤儿数据）
+    from models.vote import Vote, VoteRecord
+    vote_ids = [v.id for v in db.query(Vote).filter(Vote.committee_id == committee_id).all()]
+    if vote_ids:
+        db.query(VoteRecord).filter(VoteRecord.vote_id.in_(vote_ids)).delete(synchronize_session=False)
+        db.query(Vote).filter(Vote.id.in_(vote_ids)).delete(synchronize_session=False)
+
+    # 删除非对称消息
+    from models.async_message import AsyncMessage
+    db.query(AsyncMessage).filter(AsyncMessage.committee_id == committee_id).delete()
+
     # 删除发言名单和动议
     motions = db.query(Motion).filter(Motion.committee_id == committee_id).all()
     for m in motions:
@@ -179,12 +189,11 @@ def delete_committee(
     # 取消学团与委员会的关联
     db.query(User).filter(User.role == "staff", User.committee_id == committee_id).update({"committee_id": None})
 
-    # 清理 staff_committees 关联表
+    # 清理 staff_committees 关联表。
+    # 必须复用请求会话：此时会话已因前面的 DELETE 开启写事务并持有 SQLite 写锁，
+    # 另开 engine.connect() 去写会在 commit 时抢 EXCLUSIVE 锁失败（database is locked）。
     from sqlalchemy import text
-    from database import engine
-    with engine.connect() as conn:
-        conn.execute(text("DELETE FROM staff_committees WHERE committee_id = :cid"), {"cid": committee_id})
-        conn.commit()
+    db.execute(text("DELETE FROM staff_committees WHERE committee_id = :cid"), {"cid": committee_id})
 
     # 删除时间线
     db.query(Timeline).filter(Timeline.committee_id == committee_id).delete()
@@ -220,26 +229,56 @@ def assign_staff_to_committees(
         if cid not in found_ids:
             raise HTTPException(status_code=404, detail=f"委员会不存在 (id={cid})")
     
-    # 先清空旧关联
+    # 先清空旧关联（复用请求会话，避免与自身写事务争抢 SQLite 写锁）
     from sqlalchemy import text
-    from database import engine
-    with engine.connect() as conn:
-        conn.execute(text("DELETE FROM staff_committees WHERE staff_id = :sid"), {"sid": staff_id})
-        conn.commit()
-    
+    db.execute(text("DELETE FROM staff_committees WHERE staff_id = :sid"), {"sid": staff_id})
+
     # 插入新关联
     if data.committee_ids:
-        from database import SessionLocal
+        ins = text("INSERT OR IGNORE INTO staff_committees (staff_id, committee_id) VALUES (:sid, :cid)")
         for cid in data.committee_ids:
-            ins = text("INSERT OR IGNORE INTO staff_committees (staff_id, committee_id) VALUES (:sid, :cid)")
-            with engine.connect() as conn:
-                conn.execute(ins, {"sid": staff_id, "cid": cid})
-                conn.commit()
-    
+            db.execute(ins, {"sid": staff_id, "cid": cid})
+
     # 也更新 committee_id 字段为第一个委员会（兼容旧版）
     staff.committee_id = data.committee_ids[0] if data.committee_ids else None
     db.commit()
     return {"message": "分配成功", "committee_ids": data.committee_ids}
+
+
+@router.get("/staff-committees")
+def list_staff_committees(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """一次性返回「学团 -> 委员会」全量映射。
+
+    前端学团管理页原本为每个学团并发请求一次 /staff/{id}/committees，
+    学团数量超过连接池容量（默认 5+10）后请求会排队 30s 才报错，
+    表现为页面卡死并连带拖垮其他管理员页面。改为单次聚合查询。
+    """
+    from sqlalchemy import text
+
+    result: dict = {}
+
+    rows = db.execute(text(
+        "SELECT sc.staff_id, c.id, c.name FROM staff_committees sc "
+        "JOIN committees c ON c.id = sc.committee_id "
+        "JOIN users u ON u.id = sc.staff_id "
+        "WHERE u.role = 'staff'"
+    )).fetchall()
+    for sid, cid, cname in rows:
+        result.setdefault(int(sid), []).append({"id": int(cid), "name": cname})
+
+    # 兼容旧版：仅有 committee_id 字段、未写入关联表的学团
+    legacy = db.query(User).filter(User.role == "staff", User.committee_id.isnot(None)).all()
+    need = [u for u in legacy if u.id not in result]
+    if need:
+        cmap = {c.id: c.name for c in db.query(Committee).all()}
+        for u in need:
+            if u.committee_id in cmap:
+                result.setdefault(u.id, []).append({"id": u.committee_id, "name": cmap[u.committee_id]})
+
+    return result
 
 
 @router.get("/staff/{staff_id}/committees")
@@ -248,20 +287,17 @@ def get_staff_committees(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
-    """获取学团的委员会列表"""
+    """获取学团的委员会列表（复用请求会话，避免额外占用连接）"""
     from sqlalchemy import text
-    from database import engine
-    
-    committees = []
-    with engine.connect() as conn:
-        result = conn.execute(
-            text("SELECT c.id, c.name FROM committees c "
-                 "JOIN staff_committees sc ON c.id = sc.committee_id "
-                 "WHERE sc.staff_id = :sid"),
-            {"sid": staff_id}
-        )
-        committees = [{"id": row[0], "name": row[1]} for row in result]
-    
+
+    rows = db.execute(
+        text("SELECT c.id, c.name FROM committees c "
+             "JOIN staff_committees sc ON c.id = sc.committee_id "
+             "WHERE sc.staff_id = :sid"),
+        {"sid": staff_id}
+    ).fetchall()
+    committees = [{"id": row[0], "name": row[1]} for row in rows]
+
     # 兼容旧版
     if not committees:
         staff = db.query(User).filter(User.id == staff_id).first()
@@ -269,7 +305,7 @@ def get_staff_committees(
             c = db.query(Committee).filter(Committee.id == staff.committee_id).first()
             if c:
                 committees = [{"id": c.id, "name": c.name}]
-    
+
     return committees
 
 
@@ -288,13 +324,11 @@ def assign_staff_to_committee(
     if not committee:
         raise HTTPException(status_code=404, detail="委员会不存在")
     
+    # 复用请求会话写入关联表（避免第二条连接与自身写事务争抢写锁）
     from sqlalchemy import text
-    from database import engine
     ins = text("INSERT OR IGNORE INTO staff_committees (staff_id, committee_id) VALUES (:sid, :cid)")
-    with engine.connect() as conn:
-        conn.execute(ins, {"sid": staff_id, "cid": committee_id})
-        conn.commit()
-    
+    db.execute(ins, {"sid": staff_id, "cid": committee_id})
+
     staff.committee_id = committee_id
     db.commit()
     return {"message": "分配成功"}

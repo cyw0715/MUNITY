@@ -79,10 +79,12 @@ import { useRouter } from 'vue-router'
 import { User, Lock, FullScreen } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
+import { useWebSocket } from '../composables/useWebSocket'
 import api from '../api'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const ws = useWebSocket()
 const formRef = ref(null)
 const loading = ref(false)
 
@@ -116,6 +118,10 @@ async function handleLogin() {
       username: data.username,
       role: data.role
     })
+
+    // 全局 WebSocket 只在 App 挂载时尝试连接一次，而登录是前端路由跳转（不刷新页面），
+    // 若不在这里补一次，整个会话的实时推送（通知/会议同步/实时监控）都不会建立。
+    ws.connect()
 
     ElMessage.success({
       message: `欢迎回来，${data.username}`,

@@ -98,7 +98,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import api from '../../api'
@@ -134,10 +134,18 @@ function showDetail(item) {
   detailVisible.value = true
 }
 
-function downloadFile(filename) {
+async function downloadFile(filename) {
   const token = localStorage.getItem('token')
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await fetch(`/api/delegate/download/${encodeURIComponent(filename)}`, { headers })
+  if (!res.ok) {
+    ElMessage.error('下载失败')
+    return
+  }
+  const blob = await res.blob()
   const link = document.createElement('a')
-  link.href = `/api/delegate/download/${filename}?token=${token}`
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
   link.click()
 }
 
@@ -183,6 +191,11 @@ async function handleReview(item, status) {
   }
 }
 
+const ws = useWebSocket()
+const onEndorsementNew = loadPending
+const onEndorsementReviewed = () => { loadPending(); loadMyFiles() }
+const onDocumentsChanged = () => { loadPending(); loadMyFiles() }
+
 onMounted(async () => {
   try {
     const { data } = await api.get('/api/delegate/me')
@@ -190,10 +203,17 @@ onMounted(async () => {
   } catch (e) {}
   loadPending()
   loadMyFiles()
-  const ws = useWebSocket()
-  ws.on('endorsement_new', loadPending)
-  ws.on('endorsement_reviewed', () => { loadPending(); loadMyFiles() })
-  ws.on('documents_changed', () => { loadPending(); loadMyFiles() })
+  ws.on('endorsement_new', onEndorsementNew)
+  ws.on('endorsement_reviewed', onEndorsementReviewed)
+  ws.on('documents_changed', onDocumentsChanged)
+})
+
+// 注册的监听器必须移除：否则每次进入本页都会叠加一份，
+// 每条 WS 消息触发 N 次重复请求
+onUnmounted(() => {
+  ws.off('endorsement_new', onEndorsementNew)
+  ws.off('endorsement_reviewed', onEndorsementReviewed)
+  ws.off('documents_changed', onDocumentsChanged)
 })
 </script>
 

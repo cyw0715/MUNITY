@@ -215,29 +215,41 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   // ============ 数据加载 ============
 
-  async function loadFullState() {
-    try {
-      const [agendaRes, motionRes, delRes] = await Promise.all([
-        api.get('/api/staff/agenda'),
-        api.get('/api/staff/motions'),
-        api.get('/api/staff/delegations'),
-      ])
-      agendaItems.value = agendaRes.data
-      currentAgenda.value = agendaRes.data.find(a => a.is_active) || null
+  // 同一时刻只允许一次全量拉取：motion_changed / speakers_updated 会被
+  // App.vue 的全局监听与本 store 的 '*' 监听同时收到，不去重会翻倍打请求。
+  let fullStateInFlight = null
 
-      const active = motionRes.data.find(m => m.status === 'active')
-      if (active) {
-        activeMotion.value = active
-        // 不从 motion 配置重置计时器 — 从服务端恢复
-        await loadTimerState()
-        await loadSpeakers()
-      } else {
-        activeMotion.value = null
-        speakersList.value = []
-        currentSpeaker.value = null
-      }
-      delegations.value = delRes.data
-    } catch (e) {}
+  async function loadFullState() {
+    if (fullStateInFlight) return fullStateInFlight
+    fullStateInFlight = (async () => {
+      try {
+        const [agendaRes, motionRes, delRes] = await Promise.all([
+          api.get('/api/staff/agenda'),
+          api.get('/api/staff/motions'),
+          api.get('/api/staff/delegations'),
+        ])
+        agendaItems.value = agendaRes.data
+        currentAgenda.value = agendaRes.data.find(a => a.is_active) || null
+
+        const active = motionRes.data.find(m => m.status === 'active')
+        if (active) {
+          activeMotion.value = active
+          // 不从 motion 配置重置计时器 — 从服务端恢复
+          await loadTimerState()
+          await loadSpeakers()
+        } else {
+          activeMotion.value = null
+          speakersList.value = []
+          currentSpeaker.value = null
+        }
+        delegations.value = delRes.data
+      } catch (e) {} 
+    })()
+    try {
+      await fullStateInFlight
+    } finally {
+      fullStateInFlight = null
+    }
   }
 
   async function loadSpeakers() {

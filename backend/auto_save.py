@@ -128,7 +128,7 @@ class AutoSaver:
             for d in db.query(Directive).all():
                 state["directives"].append({
                     "id": d.id, "committee_id": d.committee_id, "delegation_id": d.delegation_id,
-                    "drafter": d.drafter, "admin_points": d.admin_points, "secrecy": d.secrecy,
+                    "drafter": d.drafter, "secrecy": d.secrecy,
                     "content": d.content, "status": d.status
                 })
 
@@ -270,7 +270,7 @@ class AutoSaver:
                 for d in state.get("directives", []):
                     db.add(Directive(
                         id=d["id"], committee_id=d["committee_id"], delegation_id=d["delegation_id"],
-                        drafter=d["drafter"], admin_points=d.get("admin_points", 0),
+                        drafter=d["drafter"],
                         secrecy=d.get("secrecy", "public"), content=d.get("content"),
                         status=d.get("status", "unread")
                     ))

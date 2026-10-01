@@ -9,7 +9,7 @@
       </template>
 
       <el-table :data="committees" style="width: 100%">
-        <el-table-column prop="id" label="ID" width="80" />
+
         <el-table-column prop="name" label="委员会名称" />
         <el-table-column label="可选功能" min-width="200">
           <template #default="{ row }">
@@ -112,8 +112,7 @@ const featureLabels = {
   agenda: '议程管理',
   directives: '指令管理',
   updates: '局势更新',
-  timeline: '时间线',
-  directive_points: '指令·行政点数'
+  timeline: '时间线'
 }
 
 async function loadCommittees() {

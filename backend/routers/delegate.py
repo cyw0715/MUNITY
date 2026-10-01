@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
@@ -42,7 +43,6 @@ def get_delegate_info(current_user: User) -> tuple:
 
 class DirectiveCreate(BaseModel):
     drafter: str
-    admin_points: int = 0
     secrecy: str = "public"  # public / secret
     content: str = ""
     departments: List[str] = []  # 涉及部门
@@ -59,18 +59,6 @@ def submit_directive(
     if not delegation:
         raise HTTPException(status_code=400, detail="代表团不存在")
 
-    # 检查当前委员会是否启用了行政点数功能
-    from models.committee import Committee
-    committee = db.query(Committee).filter(Committee.id == delegation.committee_id).first()
-    directive_points_enabled = "directive_points" in (committee.features or []) if committee else False
-
-    if directive_points_enabled:
-        # 验证行政点数
-        if data.secrecy == "public" and data.admin_points < 1:
-            raise HTTPException(status_code=400, detail="公开指令至少需要1个行政点数")
-        if data.secrecy == "secret" and data.admin_points < 2:
-            raise HTTPException(status_code=400, detail="秘密指令至少需要2个行政点数")
-
     # 验证涉及部门
     if not data.departments:
         raise HTTPException(status_code=400, detail="请至少选择一个涉及部门")
@@ -79,7 +67,6 @@ def submit_directive(
         committee_id=delegation.committee_id,
         delegation_id=delegation_id,
         drafter=data.drafter or current_user.username,
-        admin_points=data.admin_points,
         secrecy=data.secrecy,
         content=data.content,
         departments=data.departments
@@ -517,24 +504,15 @@ async def upload_document(
     db: Session = Depends(get_db)
 ):
     """代表上传docx文件"""
-    if not file.filename.endswith('.docx'):
-        raise HTTPException(status_code=400, detail="只支持 .docx 文件")
-    
+    from utils.security import save_upload_safely
+
     delegation_id = get_delegate_info(current_user)
     delegation = db.query(Delegation).filter(Delegation.id == delegation_id).first()
     if not delegation:
         raise HTTPException(status_code=400, detail="代表团不存在")
-    
-    # 生成唯一文件名
-    filename = f"{uuid.uuid4().hex}_{file.filename}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
-    
-    # 保存文件
-    content = await file.read()
-    with open(filepath, "wb") as f:
-        f.write(content)
-    
-    # 创建Document记录
+
+    filename = await save_upload_safely(file, UPLOAD_DIR, uuid.uuid4().hex)
+
     document = Document(
         committee_id=delegation.committee_id,
         delegation_id=delegation_id,
@@ -546,7 +524,7 @@ async def upload_document(
     )
     db.add(document)
     db.commit()
-    
+
     return {"message": "上传成功", "filename": filename}
 
 
@@ -554,37 +532,42 @@ async def upload_document(
 def download_file(
     filename: str,
     token: str = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
 ):
-    """下载文件（支持 header 和 query parameter 两种认证方式）"""
-    # 从 query parameter 或 header 中获取 token
-    if token:
-        try:
-            from jose import jwt
-            from config import SECRET_KEY, ALGORITHM
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = payload.get("user_id")
-            if not user_id:
-                raise HTTPException(status_code=401, detail="无效的认证凭据")
-            user = db.query(User).filter(User.id == user_id).first()
-            if not user or user.role != "delegate":
-                raise HTTPException(status_code=403, detail="权限不足")
-        except Exception:
-            raise HTTPException(status_code=401, detail="无效的认证凭据")
-    else:
+    """下载文件（优先 Authorization 头，兼容 query token；校验归属）"""
+    from utils.security import safe_join, original_display_name
+    from services import get_user_from_token
+    from models.document import Document
+    from models.update import Update
+
+    raw_token = credentials.credentials if credentials else token
+    if not raw_token:
         raise HTTPException(status_code=401, detail="缺少认证凭据")
 
-    filepath = os.path.join(UPLOAD_DIR, filename)
+    user = get_user_from_token(raw_token, db)
+    if user.role not in ("delegate", "staff", "admin"):
+        raise HTTPException(status_code=403, detail="权限不足")
+
+    filepath = safe_join(UPLOAD_DIR, filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="文件不存在")
-    
-    # 提取原始文件名（去掉 uuid 前缀）
-    original_name = filename
-    if '_' in filename:
-        parts = filename.split('_', 1)
-        if len(parts) == 2 and len(parts[0]) == 32:
-            original_name = parts[1]
-    
+
+    if user.role == "delegate":
+        # 代表的委员会归属来自代表团，而非 User.committee_id
+        delegation = db.query(Delegation).filter(Delegation.id == user.delegation_id).first() if user.delegation_id else None
+        my_committee = delegation.committee_id if delegation else user.committee_id
+        docs = db.query(Document).filter(Document.file_path == filename).all()
+        updates = db.query(Update).filter(Update.file_path == filename).all()
+        # 已入库文件按委员会隔离；未入库临时上传放行（UUID 不可猜测）
+        if docs or updates:
+            allowed = any(d.committee_id == my_committee for d in docs) or any(
+                u.committee_id == my_committee for u in updates
+            )
+            if not allowed:
+                raise HTTPException(status_code=403, detail="无权下载此文件")
+
+    original_name = original_display_name(filename)
     return FileResponse(filepath, filename=original_name)
 
 

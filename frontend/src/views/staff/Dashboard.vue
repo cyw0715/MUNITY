@@ -220,10 +220,21 @@ function toggleFullscreen() {
   }
 }
 
+function handleFullscreenChange() {
+  isFullscreen.value = !!document.fullscreenElement
+}
+
+// WS 监听器需持有引用才能在卸载时移除，否则路由往返会不断叠加
+let wsRef = null
+let wsHandlersRegistered = false
+const onWsAsyncMessage = () => { notifications.value.messages = true }
+const onWsDocumentsChanged = () => {
+  notifications.value.directives = true
+  notifications.value.documents = true
+}
+
 onMounted(async () => {
-  document.addEventListener('fullscreenchange', () => {
-    isFullscreen.value = !!document.fullscreenElement
-  })
+  document.addEventListener('fullscreenchange', handleFullscreenChange)
   try {
     // 并行获取委员会列表和当前委员会信息
     const [committeeRes, myCommitteesRes] = await Promise.all([
@@ -247,12 +258,10 @@ onMounted(async () => {
   startPolling()
   // WS 实时闪烁通知
   import('../../composables/useWebSocket').then(({ useWebSocket }) => {
-    const ws = useWebSocket()
-    ws.on('new_async_message', () => { notifications.value.messages = true })
-    ws.on('documents_changed', () => {
-      notifications.value.directives = true
-      notifications.value.documents = true
-    })
+    wsRef = useWebSocket()
+    wsRef.on('new_async_message', onWsAsyncMessage)
+    wsRef.on('documents_changed', onWsDocumentsChanged)
+    wsHandlersRegistered = true
   })
 })
 
@@ -277,7 +286,13 @@ async function handleSwitchCommittee(committeeId) {
 }
 
 onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleFullscreenChange)
   stopPolling()
+  if (wsRef && wsHandlersRegistered) {
+    wsRef.off('new_async_message', onWsAsyncMessage)
+    wsRef.off('documents_changed', onWsDocumentsChanged)
+    wsHandlersRegistered = false
+  }
 })
 </script>
 
