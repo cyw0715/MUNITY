@@ -1,7 +1,7 @@
 <template>
   <div class="animate-fade-in">
-    <el-tabs v-model="activeTab">
-      <el-tab-pane label="提交指令" name="directive">
+    <el-tabs v-model="activeTab" :class="{ 'single-mode': isSingleMode }">
+      <el-tab-pane v-if="mode !== 'document'" label="提交指令" name="directive">
         <el-card>
           <el-form :model="directiveForm" :rules="directiveRules" ref="directiveFormRef">
             <el-form-item label="起草人" prop="drafter">
@@ -29,7 +29,7 @@
         </el-card>
       </el-tab-pane>
 
-      <el-tab-pane label="提交文件" name="document">
+      <el-tab-pane v-if="mode !== 'directive'" label="提交文件" name="document">
         <el-card>
           <el-form :model="documentForm" :rules="documentRules" ref="documentFormRef">
             <el-form-item label="起草人" prop="drafter">
@@ -113,8 +113,8 @@
     <el-card style="margin-top: 16px">
       <template #header>
         <div class="card-header">
-          <span>我的提交记录</span>
-          <el-radio-group v-model="recordFilter" size="small">
+          <span>{{ props.mode === 'directive' ? '我的指令记录' : props.mode === 'document' ? '我的文件记录' : '我的提交记录' }}</span>
+          <el-radio-group v-if="!isSingleMode" v-model="recordFilter" size="small">
             <el-radio-button value="all">全部</el-radio-button>
             <el-radio-button value="directive">指令</el-radio-button>
             <el-radio-button value="document">文件</el-radio-button>
@@ -217,7 +217,13 @@ const userInfo = ref(null)
 const myDirectives = ref([])
 const myDocuments = ref([])
 const allDelegations = ref([])
-const recordFilter = ref('all')
+// 单一模式：'directive' / 'document' 时只显示对应表单；'all' 保持原来的双标签页
+const props = defineProps({
+  mode: { type: String, default: 'all' },
+})
+const isSingleMode = computed(() => props.mode === 'directive' || props.mode === 'document')
+if (props.mode === 'document') activeTab.value = 'document'
+const recordFilter = ref(isSingleMode.value ? props.mode : 'all')
 const detailVisible = ref(false)
 const detailDoc = ref(null)
 const selectedFile = ref(null)
@@ -330,11 +336,14 @@ function showDocumentDetail(doc) {
 }
 
 async function loadData() {
+  // 只取当前模式需要的记录：单一模式下未启用的功能接口不再请求（后端会 403）
+  const needDirectives = props.mode !== 'document'
+  const needDocuments = props.mode !== 'directive'
   try {
     const [meRes, dRes, docRes, delRes] = await Promise.all([
       api.get('/api/delegate/me'),
-      api.get('/api/delegate/directives'),
-      api.get('/api/delegate/documents'),
+      needDirectives ? api.get('/api/delegate/directives') : Promise.resolve({ data: [] }),
+      needDocuments ? api.get('/api/delegate/documents') : Promise.resolve({ data: [] }),
       api.get('/api/delegate/delegations').catch(() => ({ data: [] }))
     ])
     userInfo.value = meRes.data
@@ -490,5 +499,10 @@ onUnmounted(() => {
   border-radius: 4px;
   max-height: 400px;
   overflow-y: auto;
+}
+
+/* 单一模式（提交指令 / 提交文件 各自独立入口）下不显示标签页头 */
+.single-mode :deep(.el-tabs__header) {
+  display: none;
 }
 </style>

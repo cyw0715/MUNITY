@@ -88,7 +88,7 @@ class DirectiveCreate(BaseModel):
 @router.post("/directives")
 async def submit_directive(
     data: DirectiveCreate,
-    current_user: User = Depends(require_role("delegate")),
+    current_user: User = Depends(require_feature("directives", "delegate")),
     db: Session = Depends(get_db)
 ):
     delegation_id = get_delegate_info(current_user)
@@ -126,7 +126,7 @@ async def submit_directive(
 
 
 @router.get("/directives")
-def list_my_directives(current_user: User = Depends(require_role("delegate")), db: Session = Depends(get_db)):
+def list_my_directives(current_user: User = Depends(require_feature("directives", "delegate")), db: Session = Depends(get_db)):
     delegation_id = get_delegate_info(current_user)
     return db.query(Directive).filter(Directive.delegation_id == delegation_id).order_by(Directive.created_at.desc()).all()
 

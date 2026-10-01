@@ -53,7 +53,21 @@ const routes = [
     meta: { requiresAuth: true, role: 'delegate' },
     children: [
       { path: '', name: 'DelegateHome', component: () => import('../views/delegate/Home.vue') },
-      { path: 'submit', name: 'DelegateSubmit', component: () => import('../views/delegate/Submit.vue') },
+      { path: 'submit', redirect: '/delegate/submit-document' },
+      {
+        path: 'submit-directive',
+        name: 'DelegateSubmitDirective',
+        component: () => import('../views/delegate/Submit.vue'),
+        props: { mode: 'directive' },
+        // 未启用「指令管理」的会场不提供提交指令入口
+        meta: { feature: 'directives' },
+      },
+      {
+        path: 'submit-document',
+        name: 'DelegateSubmitDocument',
+        component: () => import('../views/delegate/Submit.vue'),
+        props: { mode: 'document' },
+      },
       { path: 'async-messages', name: 'DelegateAsyncMessages', component: () => import('../views/delegate/AsyncMessages.vue'), meta: { feature: 'updates' } },
       { path: 'agenda', name: 'DelegateAgenda', component: () => import('../views/delegate/Agenda.vue') },
       { path: 'updates', name: 'DelegateUpdates', component: () => import('../views/delegate/Updates.vue'), meta: { feature: 'updates' } },

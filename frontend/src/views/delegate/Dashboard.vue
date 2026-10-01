@@ -14,9 +14,13 @@
           <el-icon><HomeFilled /></el-icon>
           <span>首页</span>
         </el-menu-item>
-        <el-menu-item index="/delegate/submit">
+        <el-menu-item v-if="hasFeature('directives')" index="/delegate/submit-directive">
           <el-icon><Edit /></el-icon>
-          <span>提交指令/文件</span>
+          <span>提交指令</span>
+        </el-menu-item>
+        <el-menu-item index="/delegate/submit-document">
+          <el-icon><Folder /></el-icon>
+          <span>提交文件</span>
         </el-menu-item>
         <el-menu-item index="/delegate/agenda">
           <el-icon><List /></el-icon>
@@ -124,6 +128,8 @@ const activeMenu = computed(() => route.path)
 const pageNames = {
   '/delegate': '首页',
   '/delegate/submit': '提交指令/文件',
+  '/delegate/submit-directive': '提交指令',
+  '/delegate/submit-document': '提交文件',
   '/delegate/agenda': '议程单',
   '/delegate/async-messages': '非对称消息',
   '/delegate/updates': '局势更新',

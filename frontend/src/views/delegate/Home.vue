@@ -45,7 +45,7 @@
 
     <!-- 统计卡片 -->
     <div class="stat-grid">
-      <div class="stat-card" @click="$router.push('/delegate/submit')">
+      <div v-if="hasFeature('directives')" class="stat-card" @click="$router.push('/delegate/submit-directive')">
         <div class="stat-icon" style="background: linear-gradient(135deg, #5b92e5, #3d7ed9)">
           <el-icon :size="24"><Edit /></el-icon>
         </div>
@@ -55,7 +55,7 @@
         </div>
         <el-icon class="stat-arrow"><ArrowRight /></el-icon>
       </div>
-      <div class="stat-card" @click="$router.push('/delegate/submit')">
+      <div class="stat-card" @click="$router.push('/delegate/submit-document')">
         <div class="stat-icon" style="background: linear-gradient(135deg, #6c5ce7, #5a4bd1)">
           <el-icon :size="24"><Document /></el-icon>
         </div>
@@ -65,7 +65,7 @@
         </div>
         <el-icon class="stat-arrow"><ArrowRight /></el-icon>
       </div>
-      <div class="stat-card" @click="$router.push('/delegate/updates')">
+      <div v-if="hasFeature('updates')" class="stat-card" @click="$router.push('/delegate/updates')">
         <div class="stat-icon" style="background: linear-gradient(135deg, #e84393, #d6336c)">
           <el-icon :size="24"><Bell /></el-icon>
         </div>
@@ -84,6 +84,10 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../../api'
 import { Avatar, Edit, Document, Bell, ArrowRight } from '@element-plus/icons-vue'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { useAuthStore } from '../../stores/auth'
+import { setCommitteeFeatures, hasFeature } from '../../composables/useCommitteeFeatures'
+
+const authStore = useAuthStore()
 
 const userInfo = ref(null)
 const stats = ref({ directives: 0, documents: 0, updates: 0 })
@@ -118,19 +122,13 @@ async function refreshTimeline() {
 
 onMounted(async () => {
   try {
-    const [meRes, dRes, docRes, uRes, tRes] = await Promise.all([
-      api.get('/api/delegate/me'),
-      api.get('/api/delegate/directives'),
-      api.get('/api/delegate/documents'),
-      api.get('/api/delegate/updates'),
-      api.get('/api/delegate/timeline')
-    ])
+    const meRes = await api.get('/api/delegate/me')
     userInfo.value = meRes.data
-    stats.value.directives = dRes.data.length
-    stats.value.documents = docRes.data.length
-    stats.value.updates = uRes.data.length
-    timeline.value = tRes.data
+    // 功能列表决定哪些统计可取：未启用的接口会返回 403，故跳过
+    setCommitteeFeatures(meRes.data.committee_features, authStore.user?.id)
   } catch (e) {}
+  await refreshStats()
+  refreshTimeline()
   refreshTimer = setInterval(refreshTimeline, 1000)
   const ws = useWebSocket()
   ws.on('timeline_changed', refreshTimeline)
@@ -140,10 +138,12 @@ onMounted(async () => {
 
 async function refreshStats() {
   try {
+    const wantDirectives = hasFeature('directives')
+    const wantUpdates = hasFeature('updates')
     const [dRes, docRes, uRes] = await Promise.all([
-      api.get('/api/delegate/directives'),
+      wantDirectives ? api.get('/api/delegate/directives') : Promise.resolve({ data: [] }),
       api.get('/api/delegate/documents'),
-      api.get('/api/delegate/updates')
+      wantUpdates ? api.get('/api/delegate/updates') : Promise.resolve({ data: [] })
     ])
     stats.value.directives = dRes.data.length
     stats.value.documents = docRes.data.length
