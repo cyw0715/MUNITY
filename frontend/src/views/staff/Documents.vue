@@ -364,12 +364,21 @@ function handleCreateFileChange(file) {
   createSelectedFile.value = file.raw
 }
 
-function downloadFile(filename) {
+async function downloadFile(filename) {
   const token = localStorage.getItem('token')
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await fetch(`/api/staff/download/${encodeURIComponent(filename)}`, { headers })
+  if (!res.ok) {
+    ElMessage.error('下载失败')
+    return
+  }
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
-  link.href = `/api/staff/download/${filename}?token=${token}`
+  link.href = url
   link.download = filename
   link.click()
+  URL.revokeObjectURL(url)
 }
 
 async function handleCreate() {

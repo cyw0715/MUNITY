@@ -75,10 +75,18 @@ function showDetail(item) {
   detailVisible.value = true
 }
 
-function downloadFile(filename) {
+async function downloadFile(filename) {
   const token = localStorage.getItem('token')
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const res = await fetch(`/api/delegate/download/${encodeURIComponent(filename)}`, { headers })
+  if (!res.ok) {
+    ElMessage.error('下载失败')
+    return
+  }
+  const blob = await res.blob()
   const link = document.createElement('a')
-  link.href = `/api/delegate/download/${filename}?token=${token}`
+  link.href = URL.createObjectURL(blob)
+  link.download = filename
   link.download = filename
   link.click()
 }
