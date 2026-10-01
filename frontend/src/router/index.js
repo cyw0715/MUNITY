@@ -34,6 +34,7 @@ const routes = [
       { path: 'meeting', name: 'StaffMeeting', component: () => import('../views/staff/Meeting.vue') },
       { path: 'vote', name: 'StaffVote', component: () => import('../views/staff/Vote.vue') },
       { path: 'motion-types', name: 'StaffMotionTypes', component: () => import('../views/staff/MotionTypes.vue') },
+      { path: 'document-types', name: 'StaffDocumentTypes', component: () => import('../views/staff/DocumentTypes.vue') },
       { path: 'async-messages', name: 'StaffAsyncMessages', component: () => import('../views/staff/AsyncMessages.vue') },
       { path: 'directives', name: 'StaffDirectives', component: () => import('../views/staff/Directives.vue') },
       { path: 'documents', name: 'StaffDocuments', component: () => import('../views/staff/Documents.vue') },

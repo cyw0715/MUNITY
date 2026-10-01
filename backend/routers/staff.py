@@ -21,6 +21,12 @@ from models.update import Update
 from schemas.user import UserOut
 from schemas.delegation import DelegationBase, DelegationCreate, DelegationOut
 from services import hash_password, require_role, validate_password_strength
+from utils.document_types import (
+    resolve_document_types,
+    find_document_type,
+    document_type_label,
+    ENDORSEMENT_REQUIRED,
+)
 
 router = APIRouter(prefix="/api/staff", tags=["学团"])
 
@@ -505,8 +511,62 @@ def get_committee_info(current_user: User = Depends(require_role("staff")), db: 
         "name": committee.name,
         "features": committee.features or [],
         "motion_types": committee.motion_types or [],
-        "motion_types_configured": bool(committee.motion_types_configured)
+        "motion_types_configured": bool(committee.motion_types_configured),
+        "document_types": resolve_document_types(committee),
+        "document_types_configured": bool(committee.document_types_configured)
     }
+
+
+@router.put("/document-types")
+def update_document_types(
+    data: dict,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """更新委员会的文件类型配置
+
+    每项：{ name, key?, endorsement: required|optional|none,
+            need_secrecy: bool, need_departments: bool }
+    内置类型本可带 key（declaration/memorandum/agreement），自定义类型不带。
+    """
+    committee_id = get_staff_committee(current_user)
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
+    if not committee:
+        raise HTTPException(status_code=404, detail="委员会不存在")
+
+    raw = data.get("document_types", [])
+    if not isinstance(raw, list):
+        raise HTTPException(status_code=400, detail="document_types 必须为数组")
+
+    cleaned = []
+    seen = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = (item.get("name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="文件类型名称不能为空")
+        if name in seen:
+            raise HTTPException(status_code=400, detail=f"文件类型「{name}」重复")
+        seen.add(name)
+
+        entry = {"name": name}
+        key = item.get("key")
+        if key:
+            entry["key"] = key
+        endorsement = item.get("endorsement")
+        if endorsement not in ("required", "optional", "none"):
+            raise HTTPException(status_code=400, detail=f"「{name}」的联署设置不合法")
+        entry["endorsement"] = endorsement
+        entry["need_secrecy"] = bool(item.get("need_secrecy", False))
+        entry["need_departments"] = bool(item.get("need_departments", False))
+        cleaned.append(entry)
+
+    committee.document_types = cleaned
+    # 标记为已配置：此后即使删空也不再回退内置默认
+    committee.document_types_configured = True
+    db.commit()
+    return {"document_types": resolve_document_types(committee)}
 
 
 @router.put("/motion-types")
@@ -1360,6 +1420,7 @@ def list_documents(
             "doc_type": d.doc_type,
             "title": d.title,
             "content": d.content,
+            "departments": d.departments or [],
             "file_path": d.file_path,
             "secrecy": d.secrecy or "public",
             "published": d.published or False,
@@ -1481,8 +1542,9 @@ async def publish_direct(
     """主席团直接发布文件到会议文件"""
     committee_ids = get_staff_committee_list(current_user)
 
-    doc_type_labels = {"declaration": "声明", "memorandum": "备忘录", "agreement": "协定"}
-    type_label = doc_type_labels.get(data.doc_type, data.doc_type)
+    # 类型显示名取自本委员会的文件类型配置，自定义类型也能正确展示
+    committee = db.query(Committee).filter(Committee.id == committee_ids[0]).first() if committee_ids else None
+    type_label = document_type_label(committee, data.doc_type)
     title = f"[{type_label}] {data.title}"
     content = f"主席团发布\n\n{data.content}"
 
@@ -1532,9 +1594,13 @@ async def publish_document_to_updates(
     if not doc:
         raise HTTPException(status_code=404, detail="文件不存在")
 
-    # 秘密协定不能发布
-    if doc.doc_type == "agreement" and doc.secrecy == "secret":
-        raise HTTPException(status_code=403, detail="秘密协定不能发布")
+    # 该委员会的文件类型配置（用于校验与显示名）
+    committee = db.query(Committee).filter(Committee.id == doc.committee_id).first()
+    type_cfg = find_document_type(committee, doc.doc_type) or {}
+
+    # 强制联署且标为秘密的文件不能公开到会议文件
+    if type_cfg.get("endorsement") == ENDORSEMENT_REQUIRED and doc.secrecy == "secret":
+        raise HTTPException(status_code=403, detail="秘密且需强制联署的文件不能发布")
 
     # 获取代表团名称
     delegation = db.query(Delegation).filter(Delegation.id == doc.delegation_id).first()
@@ -1548,8 +1614,7 @@ async def publish_document_to_updates(
             if c:
                 signing_names.append(c.name)
 
-    doc_type_labels = {"declaration": "声明", "memorandum": "备忘录", "agreement": "协定"}
-    type_label = doc_type_labels.get(doc.doc_type, doc.doc_type)
+    type_label = document_type_label(committee, doc.doc_type)
     title = f"[{type_label}] {doc.title}"
 
     # 内容包含起草人和签署国家信息
@@ -1808,8 +1873,8 @@ async def publish_with_file(
         from utils.security import save_upload_safely
         file_path = await save_upload_safely(file, UPLOAD_DIR, uuid.uuid4().hex)
     
-    doc_type_labels = {"declaration": "声明", "memorandum": "备忘录", "agreement": "协定"}
-    type_label = doc_type_labels.get(doc_type, doc_type)
+    committee = db.query(Committee).filter(Committee.id == committee_ids[0]).first() if committee_ids else None
+    type_label = document_type_label(committee, doc_type)
     update_title = f"[{type_label}] {title}"
     update_content = f"主席团发布\n\n{content}" if content else "主席团发布"
     

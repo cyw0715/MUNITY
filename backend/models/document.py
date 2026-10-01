@@ -10,9 +10,10 @@ class Document(Base):
     committee_id = Column(Integer, ForeignKey("committees.id"), nullable=False)
     delegation_id = Column(Integer, ForeignKey("delegations.id"), nullable=False)
     drafter = Column(String(100), nullable=False)
-    doc_type = Column(String(30), nullable=False)  # declaration / memorandum / agreement
+    doc_type = Column(String(30), nullable=False)  # 文件类型：内置用 key(declaration/…)，自定义用类型名
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=True)
+    departments = Column(JSON, nullable=True)  # 涉及部门列表（按文件类型配置决定是否启用）
     file_path = Column(String(500), nullable=True)
     signing_countries = Column(JSON, nullable=True)  # 签署国家列表（协定专用）
     secrecy = Column(String(20), default="public")  # public / secret（协定专用）

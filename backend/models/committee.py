@@ -14,6 +14,9 @@ class Committee(Base):
     # 是否已配置过动议类型。用于区分「从未配置」（展示内置默认）
     # 与「配置后删空」（保持为空）——后者删掉全部内置类型也应生效。
     motion_types_configured = Column(Boolean, default=False, nullable=False)
+    document_types = Column(JSON, default=list)  # 文件类型完整列表（内置 + 自定义）
+    # 同 motion_types_configured：区分「从未配置」与「配置后删空」
+    document_types_configured = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # 关系

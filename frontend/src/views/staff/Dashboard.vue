@@ -49,6 +49,10 @@
           <el-icon><Setting /></el-icon>
           <span>动议类型</span>
         </el-menu-item>
+        <el-menu-item index="/staff/document-types">
+          <el-icon><Tickets /></el-icon>
+          <span>文件类型</span>
+        </el-menu-item>
 
         <!-- 非对称消息 -->
         <el-menu-item index="/staff/async-messages" :class="{ 'has-notification': notifications.messages }" @click="clearNotification('messages')">
@@ -158,7 +162,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
-import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message, Edit, SwitchButton, OfficeBuilding, Check, Setting } from '@element-plus/icons-vue'
+import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message, Edit, SwitchButton, OfficeBuilding, Check, Setting, Tickets } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import { useNotification } from '../../composables/useNotification'
@@ -192,6 +196,7 @@ const pageNames = {
   '/staff/async-messages': '非对称消息',
   '/staff/directives': '指令管理',
   '/staff/documents': '文件管理',
+  '/staff/document-types': '文件类型',
   '/staff/updates': '局势更新',
   '/staff/records': '会议记录',
   '/staff/archive': '存档/恢复',
