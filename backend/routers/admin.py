@@ -63,6 +63,10 @@ def delete_staff(
     staff = db.query(User).filter(User.id == staff_id, User.role == "staff").first()
     if not staff:
         raise HTTPException(status_code=404, detail="学团不存在")
+    # 先清理学团-委员会关联，否则会留下指向已删用户的孤儿记录。
+    # 复用请求会话，避免另开连接与自身写事务抢 SQLite 写锁。
+    from sqlalchemy import text
+    db.execute(text("DELETE FROM staff_committees WHERE staff_id = :sid"), {"sid": staff_id})
     db.delete(staff)
     db.commit()
     return {"message": "删除成功"}
