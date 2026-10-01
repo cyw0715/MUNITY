@@ -535,6 +535,10 @@ def get_me(current_user: User = Depends(require_role("delegate")), db: Session =
         "delegation_id": current_user.delegation_id,
         "delegation_name": delegation.name if delegation else None,
         "committee_features": committee.features if committee else [],
+        "committee_id": committee.id if committee else None,
+        "logo_icon": committee.logo_icon if committee else None,
+        "logo_image": committee.logo_image if committee else None,
+        "display_title": committee.display_title if committee else None,
         "document_types": resolve_document_types(committee),
         "document_types_configured": bool(committee.document_types_configured) if committee else False
     }

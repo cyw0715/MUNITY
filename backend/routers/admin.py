@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from schemas.user import UserCreate, UserOut
 from schemas.committee import CommitteeCreate, CommitteeOut, CommitteeUpdate
 from schemas.delegation import DelegationCreate, DelegationOut
 from services import hash_password, require_role, validate_password_strength
+from utils.committee_logo import save_logo, delete_logo_file
 
 router = APIRouter(prefix="/api/admin", tags=["管理员"])
 
@@ -85,7 +86,12 @@ def create_committee(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db)
 ):
-    committee = Committee(name=data.name, features=data.features)
+    committee = Committee(
+        name=data.name,
+        features=data.features,
+        logo_icon=(data.logo_icon or "").strip() or None,
+        display_title=(data.display_title or "").strip() or None,
+    )
     db.add(committee)
     db.commit()
     db.refresh(committee)
@@ -106,7 +112,53 @@ def update_committee(
         committee.name = data.name
     if data.features is not None:
         committee.features = data.features
+    if data.logo_icon is not None:
+        # 空字符串视为清除，统一存 None
+        committee.logo_icon = (data.logo_icon.strip() or None)
+    if data.display_title is not None:
+        committee.display_title = (data.display_title.strip() or None)
     db.commit()
+    db.refresh(committee)
+    return committee
+
+
+@router.post("/committees/{committee_id}/logo", response_model=CommitteeOut)
+async def upload_committee_logo(
+    committee_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """上传/替换委员会侧边栏图标"""
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
+    if not committee:
+        raise HTTPException(status_code=404, detail="委员会不存在")
+
+    old = committee.logo_image
+    stored = await save_logo(file)
+    committee.logo_image = stored
+    db.commit()
+    # 替换成功后清理旧文件，避免遗留孤儿图标
+    if old and old != stored:
+        delete_logo_file(old)
+    db.refresh(committee)
+    return committee
+
+
+@router.delete("/committees/{committee_id}/logo", response_model=CommitteeOut)
+def delete_committee_logo(
+    committee_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """移除委员会图标（回退为徽标文字或默认）"""
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
+    if not committee:
+        raise HTTPException(status_code=404, detail="委员会不存在")
+    old = committee.logo_image
+    committee.logo_image = None
+    db.commit()
+    delete_logo_file(old)
     db.refresh(committee)
     return committee
 
@@ -203,8 +255,11 @@ def delete_committee(
     db.query(Timeline).filter(Timeline.committee_id == committee_id).delete()
 
     # 删除委员会
+    logo_file = committee.logo_image
     db.delete(committee)
     db.commit()
+    # 一并清理图标文件，避免遗留孤儿文件
+    delete_logo_file(logo_file)
     return {"message": "删除成功"}
 
 

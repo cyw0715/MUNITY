@@ -2,16 +2,12 @@
   <div class="delegate-layout">
     <!-- 侧边栏 -->
     <aside class="sidebar">
-      <div class="sidebar-brand">
-        <div class="brand-icon-small">
-          <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="10" fill="url(#brand-grad-s)" />
-            <text x="20" y="27" text-anchor="middle" fill="white" font-size="20" font-weight="700">M</text>
-            <defs><linearGradient id="brand-grad-s" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#5b92e5"/><stop offset="1" stop-color="#3d7ed9"/></linearGradient></defs>
-          </svg>
-        </div>
-        <span class="brand-text">MUNITY OS</span>
-      </div>
+      <CommitteeBrand
+        :icon="brandIcon"
+        :logo-image="brandImage"
+        :committee-id="brandCommitteeId"
+        :title="brandTitle"
+      />
 
       <el-menu :default-active="activeMenu" router class="sidebar-menu">
         <el-menu-item index="/delegate">
@@ -105,12 +101,18 @@ import { useAuthStore } from '../../stores/auth'
 import { HomeFilled, Edit, Bell, Folder, ArrowDown, FullScreen, Aim, Back, List, Message, Edit as EditIcon, SwitchButton, Select } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
+import CommitteeBrand from '../../components/CommitteeBrand.vue'
 import { useNotification } from '../../composables/useNotification'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const delegationName = ref('')
+// 侧边栏品牌，由管理员在「委员会管理」中按委员会配置
+const brandIcon = ref('')
+const brandImage = ref('')
+const brandTitle = ref('')
+const brandCommitteeId = ref(null)
 const isFullscreen = ref(false)
 const changePasswordRef = ref(null)
 
@@ -161,6 +163,10 @@ onMounted(async () => {
   try {
     const { data } = await api.get('/api/delegate/me')
     delegationName.value = data.delegation_name
+    brandIcon.value = data.logo_icon || ''
+    brandImage.value = data.logo_image || ''
+    brandTitle.value = data.display_title || ''
+    brandCommitteeId.value = data.committee_id || null
   } catch (e) {}
   startPolling()
   // WS 实时闪烁通知

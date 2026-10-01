@@ -37,6 +37,11 @@ DEFAULT_ADMIN_PASSWORD = os.getenv("DEFAULT_ADMIN_PASSWORD", "")
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))  # 20MB
 ALLOWED_UPLOAD_EXTENSIONS = {".docx"}
 
+# 委员会图标上传：独立白名单，不放宽文档上传的限制
+# 不含 svg —— SVG 可内嵌脚本，作为静态资源直出会有 XSS 风险
+MAX_LOGO_BYTES = int(os.getenv("MAX_LOGO_BYTES", str(2 * 1024 * 1024)))  # 2MB
+ALLOWED_LOGO_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
 # CORS：逗号分隔的精确来源；空则开发环境放宽为 localhost
 _raw_origins = os.getenv("CORS_ORIGINS", "").strip()
 if _raw_origins:

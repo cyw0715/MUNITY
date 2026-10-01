@@ -17,6 +17,10 @@ class Committee(Base):
     document_types = Column(JSON, default=list)  # 文件类型完整列表（内置 + 自定义）
     # 同 motion_types_configured：区分「从未配置」与「配置后删空」
     document_types_configured = Column(Boolean, default=False, nullable=False)
+    # 侧边栏品牌：徽标文字（1–2 字符，可为 emoji）、上传的图标文件名、标题
+    logo_icon = Column(String(16), nullable=True)
+    logo_image = Column(String(255), nullable=True)
+    display_title = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # 关系

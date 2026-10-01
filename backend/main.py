@@ -247,6 +247,28 @@ def server_monitor_realtime(current_user=Depends(require_role("admin"))):
     }
 
 
+@app.get("/api/committee-logo/{committee_id}")
+def committee_logo(committee_id: int):
+    """委员会侧边栏图标（公开只读）。
+
+    文件名来自数据库而非 URL，且仅允许白名单图片格式，无路径穿越风险。
+    """
+    from models.committee import Committee
+    from utils.committee_logo import logo_path
+
+    db = SessionLocal()
+    try:
+        committee = db.query(Committee).filter(Committee.id == committee_id).first()
+        stored = committee.logo_image if committee else None
+    finally:
+        db.close()
+
+    path = logo_path(stored)
+    if not path:
+        return JSONResponse({"detail": "未设置图标"}, status_code=404)
+    return FileResponse(path)
+
+
 # 静态文件目录
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
 

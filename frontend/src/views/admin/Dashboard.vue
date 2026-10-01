@@ -2,16 +2,8 @@
   <div class="admin-layout">
     <!-- 侧边栏 -->
     <aside class="sidebar" v-if="!isFullscreen">
-      <div class="sidebar-brand">
-        <div class="brand-icon-small">
-          <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="10" fill="url(#brand-grad-s)" />
-            <text x="20" y="27" text-anchor="middle" fill="white" font-size="20" font-weight="700">M</text>
-            <defs><linearGradient id="brand-grad-s" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#5b92e5"/><stop offset="1" stop-color="#3d7ed9"/></linearGradient></defs>
-          </svg>
-        </div>
-        <span class="brand-text">MUNITY OS</span>
-      </div>
+      <!-- 管理员不绑定委员会，保持默认品牌 -->
+      <CommitteeBrand />
 
       <el-menu :default-active="activeMenu" router class="sidebar-menu">
         <el-menu-item index="/admin">
@@ -78,6 +70,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { HomeFilled, User, OfficeBuilding, ArrowDown, FullScreen, Aim, Back, Edit, SwitchButton, Plus } from '@element-plus/icons-vue'
 import ChangePassword from '../../components/ChangePassword.vue'
+import CommitteeBrand from '../../components/CommitteeBrand.vue'
 
 const route = useRoute()
 const router = useRouter()

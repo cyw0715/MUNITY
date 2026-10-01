@@ -2,16 +2,12 @@
   <div class="staff-layout">
     <!-- 侧边栏 -->
     <aside class="sidebar" v-if="!isFullscreen" :class="{ collapsed: sidebarCollapsed }">
-      <div class="sidebar-brand">
-        <div class="brand-icon-small">
-          <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="10" fill="url(#brand-grad-s)" />
-            <text x="20" y="27" text-anchor="middle" fill="white" font-size="20" font-weight="700">M</text>
-            <defs><linearGradient id="brand-grad-s" x1="0" y1="0" x2="40" y2="40"><stop stop-color="#5b92e5"/><stop offset="1" stop-color="#3d7ed9"/></linearGradient></defs>
-          </svg>
-        </div>
-        <span class="brand-text">MUNITY OS</span>
-      </div>
+      <CommitteeBrand
+        :icon="brandIcon"
+        :logo-image="brandImage"
+        :committee-id="activeCommitteeId"
+        :title="brandTitle"
+      />
 
       <el-menu :default-active="activeMenu" router class="sidebar-menu">
         <el-menu-item index="/staff">
@@ -165,6 +161,7 @@ import { useAuthStore } from '../../stores/auth'
 import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderOpened, Bell, DataAnalysis, Folder, ArrowDown, FullScreen, Aim, Back, Clock, Select, Message, Edit, SwitchButton, OfficeBuilding, Check, Setting, Tickets } from '@element-plus/icons-vue'
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
+import CommitteeBrand from '../../components/CommitteeBrand.vue'
 import { useNotification } from '../../composables/useNotification'
 import { ElMessage } from 'element-plus'
 
@@ -176,6 +173,10 @@ const activeCommitteeId = ref(null)
 const activeCommitteeName = ref('')
 const committees = ref([])
 const committeeFeatures = ref([])
+// 侧边栏品牌，由管理员在「委员会管理」中按委员会配置
+const brandIcon = ref('')
+const brandImage = ref('')
+const brandTitle = ref('')
 const isFullscreen = ref(false)
 const changePasswordRef = ref(null)
 const sidebarCollapsed = ref(false)
@@ -250,6 +251,9 @@ onMounted(async () => {
       activeCommitteeId.value = committeeRes.data.id
       activeCommitteeName.value = committeeRes.data.name
       committeeFeatures.value = committeeRes.data.features || []
+      brandIcon.value = committeeRes.data.logo_icon || ''
+      brandImage.value = committeeRes.data.logo_image || ''
+      brandTitle.value = committeeRes.data.display_title || ''
     }
     const allCommittees = myCommitteesRes.data || []
     committees.value = allCommittees
