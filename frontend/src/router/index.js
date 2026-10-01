@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { ensureCommitteeFeatures } from '../composables/useCommitteeFeatures'
 
 const routes = [
   {
@@ -35,10 +36,10 @@ const routes = [
       { path: 'vote', name: 'StaffVote', component: () => import('../views/staff/Vote.vue') },
       { path: 'motion-types', name: 'StaffMotionTypes', component: () => import('../views/staff/MotionTypes.vue') },
       { path: 'document-types', name: 'StaffDocumentTypes', component: () => import('../views/staff/DocumentTypes.vue') },
-      { path: 'async-messages', name: 'StaffAsyncMessages', component: () => import('../views/staff/AsyncMessages.vue') },
-      { path: 'directives', name: 'StaffDirectives', component: () => import('../views/staff/Directives.vue') },
+      { path: 'async-messages', name: 'StaffAsyncMessages', component: () => import('../views/staff/AsyncMessages.vue'), meta: { feature: 'updates' } },
+      { path: 'directives', name: 'StaffDirectives', component: () => import('../views/staff/Directives.vue'), meta: { feature: 'directives' } },
       { path: 'documents', name: 'StaffDocuments', component: () => import('../views/staff/Documents.vue') },
-      { path: 'updates', name: 'StaffUpdates', component: () => import('../views/staff/Updates.vue') },
+      { path: 'updates', name: 'StaffUpdates', component: () => import('../views/staff/Updates.vue'), meta: { feature: 'updates' } },
       { path: 'records', name: 'StaffRecords', component: () => import('../views/staff/Records.vue') },
       { path: 'archive', name: 'StaffArchive', component: () => import('../views/staff/Archive.vue') },
       { path: 'timeline', name: 'StaffTimeline', component: () => import('../views/staff/Timeline.vue') }
@@ -53,9 +54,9 @@ const routes = [
     children: [
       { path: '', name: 'DelegateHome', component: () => import('../views/delegate/Home.vue') },
       { path: 'submit', name: 'DelegateSubmit', component: () => import('../views/delegate/Submit.vue') },
-      { path: 'async-messages', name: 'DelegateAsyncMessages', component: () => import('../views/delegate/AsyncMessages.vue') },
+      { path: 'async-messages', name: 'DelegateAsyncMessages', component: () => import('../views/delegate/AsyncMessages.vue'), meta: { feature: 'updates' } },
       { path: 'agenda', name: 'DelegateAgenda', component: () => import('../views/delegate/Agenda.vue') },
-      { path: 'updates', name: 'DelegateUpdates', component: () => import('../views/delegate/Updates.vue') },
+      { path: 'updates', name: 'DelegateUpdates', component: () => import('../views/delegate/Updates.vue'), meta: { feature: 'updates' } },
       { path: 'meeting-files', name: 'DelegateMeetingFiles', component: () => import('../views/delegate/MeetingFiles.vue') },
       { path: 'endorsements', name: 'DelegateEndorsements', component: () => import('../views/delegate/Endorsements.vue') }
     ]
@@ -68,15 +69,29 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
     next('/login')
-  } else if (to.meta.role && authStore.user?.role !== to.meta.role) {
-    next('/login')
-  } else {
-    next()
+    return
   }
+  if (to.meta.role && authStore.user?.role !== to.meta.role) {
+    next('/login')
+    return
+  }
+
+  // 按会场功能开关拦截：直接输入 URL 也不放行（后端另有 require_feature 兜底）
+  if (to.meta.feature && authStore.user?.role !== 'admin') {
+    const role = authStore.user?.role
+    const features = await ensureCommitteeFeatures(role, authStore.user?.id)
+    if (features !== null && !features.includes(to.meta.feature)) {
+      const home = { admin: '/admin', staff: '/staff', delegate: '/delegate' }[role] || '/login'
+      next(to.path === home ? undefined : home)
+      return
+    }
+  }
+
+  next()
 })
 
 export default router

@@ -51,13 +51,13 @@
         </el-menu-item>
 
         <!-- 非对称消息 -->
-        <el-menu-item index="/staff/async-messages" :class="{ 'has-notification': notifications.messages }" @click="clearNotification('messages')">
+        <el-menu-item v-if="hasFeature('updates')" index="/staff/async-messages" :class="{ 'has-notification': notifications.messages }" @click="clearNotification('messages')">
           <el-icon><Message /></el-icon>
           <span>非对称消息</span>
           <span v-if="notifications.messages" class="notif-dot" />
         </el-menu-item>
 
-        <el-menu-item index="/staff/directives" :class="{ 'has-notification': notifications.directives }" @click="clearNotification('directives')">
+        <el-menu-item v-if="hasFeature('directives')" index="/staff/directives" :class="{ 'has-notification': notifications.directives }" @click="clearNotification('directives')">
           <el-icon><Document /></el-icon>
           <span>指令管理</span>
           <span v-if="notifications.directives" class="notif-dot" />
@@ -162,6 +162,7 @@ import { HomeFilled, User, Avatar, List, Checked, VideoCamera, Document, FolderO
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import CommitteeBrand from '../../components/CommitteeBrand.vue'
+import { setCommitteeFeatures, hasFeature } from '../../composables/useCommitteeFeatures'
 import { useNotification } from '../../composables/useNotification'
 import { ElMessage } from 'element-plus'
 
@@ -172,7 +173,6 @@ const committeeName = ref('')
 const activeCommitteeId = ref(null)
 const activeCommitteeName = ref('')
 const committees = ref([])
-const committeeFeatures = ref([])
 // 侧边栏品牌，由管理员在「委员会管理」中按委员会配置
 const brandIcon = ref('')
 const brandImage = ref('')
@@ -205,10 +205,6 @@ const pageNames = {
 }
 const currentPage = computed(() => pageNames[route.path] || '')
 
-function hasFeature(feature) {
-  return committeeFeatures.value.includes(feature)
-}
-
 function handleCommand(command) {
   if (command === 'password') {
     changePasswordRef.value?.show()
@@ -234,8 +230,11 @@ function handleFullscreenChange() {
 let wsRef = null
 let wsHandlersRegistered = false
 const onWsAsyncMessage = () => { notifications.value.messages = true }
-const onWsDocumentsChanged = () => {
-  notifications.value.directives = true
+// 指令与文件各自对应各自的事件，不要互相点亮。
+// actor_id 等于自己说明是本端刚做的操作（如撤回文件），不该给自己弹提示。
+const onWsDirectivesChanged = () => { notifications.value.directives = true }
+const onWsDocumentsChanged = (data) => {
+  if (data?.actor_id && data.actor_id === authStore.user?.id) return
   notifications.value.documents = true
 }
 
@@ -250,7 +249,7 @@ onMounted(async () => {
     if (committeeRes.data) {
       activeCommitteeId.value = committeeRes.data.id
       activeCommitteeName.value = committeeRes.data.name
-      committeeFeatures.value = committeeRes.data.features || []
+      setCommitteeFeatures(committeeRes.data.features, authStore.user?.id)
       brandIcon.value = committeeRes.data.logo_icon || ''
       brandImage.value = committeeRes.data.logo_image || ''
       brandTitle.value = committeeRes.data.display_title || ''
@@ -269,6 +268,7 @@ onMounted(async () => {
   import('../../composables/useWebSocket').then(({ useWebSocket }) => {
     wsRef = useWebSocket()
     wsRef.on('new_async_message', onWsAsyncMessage)
+    wsRef.on('directives_changed', onWsDirectivesChanged)
     wsRef.on('documents_changed', onWsDocumentsChanged)
     wsHandlersRegistered = true
   })
@@ -279,7 +279,7 @@ async function handleSwitchCommittee(committeeId) {
     const { data } = await api.post('/api/staff/switch-committee', { committee_id: committeeId })
     activeCommitteeId.value = data.committee_id
     activeCommitteeName.value = data.committee_name
-    committeeFeatures.value = data.features || []
+    setCommitteeFeatures(data.features, authStore.user?.id)
 
     // 强制刷新当前页面（标题栏、功能标签等需要重新加载）
     const currentPath = route.path
@@ -299,6 +299,7 @@ onUnmounted(() => {
   stopPolling()
   if (wsRef && wsHandlersRegistered) {
     wsRef.off('new_async_message', onWsAsyncMessage)
+    wsRef.off('directives_changed', onWsDirectivesChanged)
     wsRef.off('documents_changed', onWsDocumentsChanged)
     wsHandlersRegistered = false
   }

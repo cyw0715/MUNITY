@@ -8,7 +8,7 @@ from models.user import User
 from models.delegation import Delegation
 from models.committee import Committee
 from models.async_message import AsyncMessage, get_receiver_ids, get_receiver_delegation_ids, is_message_visible_to
-from services import require_role, get_current_user
+from services import require_role, require_feature, get_current_user
 from services.websocket_manager import ws_manager
 import json
 import logging
@@ -212,7 +212,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
 @router.get("/staff/async-messages", response_model=List[AsyncMessageOut])
 def staff_list_async_messages(
     visibility: Optional[str] = None,
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
     """学团查看所有可访问委员会的非对称消息"""
@@ -256,7 +256,7 @@ def staff_my_committees(
 
 @router.get("/staff/available-delegates")
 def staff_available_delegates(
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
     """获取学团可选的代表和代表团（跨委员会）"""
@@ -287,7 +287,7 @@ def staff_available_delegates(
 @router.post("/staff/async-messages", response_model=AsyncMessageOut)
 async def staff_create_async_message(
     data: AsyncMessageCreate,
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
     """学团发布非对称消息（支持多接收者）"""
@@ -368,7 +368,7 @@ async def staff_create_async_message(
 @router.delete("/staff/async-messages/{message_id}")
 def staff_delete_async_message(
     message_id: int,
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
     """学团撤回非对称消息"""
@@ -402,7 +402,7 @@ def _delegate_committee_id(db: Session, user: User) -> int:
 
 @router.get("/delegate/async-messages", response_model=List[AsyncMessageOut])
 def delegate_list_async_messages(
-    current_user: User = Depends(require_role("delegate")),
+    current_user: User = Depends(require_feature("updates", "delegate")),
     db: Session = Depends(get_db)
 ):
     """代表查看自己可见的非对称消息"""
@@ -428,7 +428,7 @@ def delegate_list_async_messages(
 @router.put("/delegate/async-messages/{message_id}/read")
 def delegate_mark_read(
     message_id: int,
-    current_user: User = Depends(require_role("delegate")),
+    current_user: User = Depends(require_feature("updates", "delegate")),
     db: Session = Depends(get_db)
 ):
     """代表标记消息为已读"""
@@ -470,7 +470,7 @@ def delegate_mark_read(
 
 @router.get("/delegate/async-messages/unread-count")
 def delegate_unread_count(
-    current_user: User = Depends(require_role("delegate")),
+    current_user: User = Depends(require_feature("updates", "delegate")),
     db: Session = Depends(get_db)
 ):
     """代表获取未读消息数量"""

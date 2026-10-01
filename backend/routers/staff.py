@@ -20,7 +20,7 @@ from models.document import Document
 from models.update import Update
 from schemas.user import UserOut
 from schemas.delegation import DelegationBase, DelegationCreate, DelegationOut
-from services import hash_password, require_role, validate_password_strength
+from services import hash_password, require_role, require_feature, validate_password_strength
 from utils.document_types import (
     resolve_document_types,
     find_document_type,
@@ -628,6 +628,67 @@ def get_rollcall(current_user: User = Depends(require_role("staff")), db: Sessio
     return result
 
 
+@router.put("/rollcall/all")
+async def set_all_rollcall(
+    data: dict,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """一键设置本委员会全部代表的出席状态。
+
+    必须注册在 /rollcall/{delegate_id} 之前，否则 "all" 会被当作 delegate_id
+    解析失败而返回 422。
+    """
+    is_present = bool(data.get("is_present", True))
+    committee_id = get_staff_committee(current_user)
+
+    delegation_ids = [d.id for d in db.query(Delegation).filter(
+        Delegation.committee_id == committee_id).all()]
+    if not delegation_ids:
+        return {"message": "更新成功", "updated": 0}
+
+    delegates = db.query(User).filter(
+        User.role == "delegate",
+        User.delegation_id.in_(delegation_ids)
+    ).all()
+    if not delegates:
+        return {"message": "更新成功", "updated": 0}
+
+    ids = [u.id for u in delegates]
+    existing = {
+        r.delegate_id: r
+        for r in db.query(RollCall).filter(
+            RollCall.committee_id == committee_id,
+            RollCall.delegate_id.in_(ids)
+        ).all()
+    }
+    for u in delegates:
+        rec = existing.get(u.id)
+        if rec:
+            rec.is_present = is_present
+        else:
+            db.add(RollCall(
+                committee_id=committee_id,
+                delegation_id=u.delegation_id,
+                delegate_id=u.id,
+                is_present=is_present
+            ))
+    db.commit()
+
+    # WebSocket 广播：scope=all 表示整表变更，客户端应重新拉取
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "rollcall_updated",
+            "scope": "all",
+            "is_present": is_present
+        })
+    except Exception:
+        pass
+
+    return {"message": "更新成功", "updated": len(delegates), "is_present": is_present}
+
+
 @router.put("/rollcall/{delegate_id}")
 async def update_delegate_rollcall(
     delegate_id: int,
@@ -641,6 +702,15 @@ async def update_delegate_rollcall(
     delegate = db.query(User).filter(User.id == delegate_id, User.role == "delegate").first()
     if not delegate:
         raise HTTPException(status_code=404, detail="代表不存在")
+
+    # 校验代表属于本委员会，避免跨委员会写入点名
+    if delegate.delegation_id:
+        delegation = db.query(Delegation).filter(
+            Delegation.id == delegate.delegation_id,
+            Delegation.committee_id == committee_id
+        ).first()
+        if not delegation:
+            raise HTTPException(status_code=403, detail="无权操作此代表")
 
     existing = db.query(RollCall).filter(
         RollCall.committee_id == committee_id,
@@ -1228,7 +1298,7 @@ class UpdateCreate(BaseModel):
 @router.get("/updates")
 def list_updates(
     keyword: str = None,
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
     """获取局势更新列表，支持关键字搜索（包括附件内容）"""
@@ -1262,7 +1332,7 @@ def list_updates(
 @router.post("/updates")
 async def create_update(
     data: UpdateCreate,
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
     committee_ids = get_staff_committee_list(current_user)
@@ -1297,7 +1367,7 @@ async def create_update(
 @router.delete("/updates/{update_id}")
 async def delete_update(
     update_id: int,
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
     committee_ids = get_staff_committee_list(current_user)
@@ -1328,7 +1398,7 @@ async def delete_update(
 # ==================== 指令/文件管理 ====================
 
 @router.get("/directives")
-def list_directives(current_user: User = Depends(require_role("staff")), db: Session = Depends(get_db)):
+def list_directives(current_user: User = Depends(require_feature("directives", "staff")), db: Session = Depends(get_db)):
     committee_id = get_staff_committee(current_user)
     directives = db.query(Directive).filter(Directive.committee_id == committee_id).order_by(Directive.created_at.desc()).all()
     
@@ -1354,7 +1424,7 @@ def list_directives(current_user: User = Depends(require_role("staff")), db: Ses
 def update_directive_status(
     directive_id: int,
     status: str,
-    current_user: User = Depends(require_role("staff")),
+    current_user: User = Depends(require_feature("directives", "staff")),
     db: Session = Depends(get_db)
 ):
     committee_id = get_staff_committee(current_user)
@@ -1491,7 +1561,9 @@ async def recall_document(
         await ws_manager.broadcast_committee(committee_id, {
             "type": "documents_changed",
             "action": "recalled",
-            "doc_id": doc_id
+            "doc_id": doc_id,
+            # 带上操作者，前端据此避免给自己的操作弹提示
+            "actor_id": current_user.id
         })
     except Exception:
         pass
@@ -1522,7 +1594,8 @@ async def restore_document(
         await ws_manager.broadcast_committee(committee_id, {
             "type": "documents_changed",
             "action": "restored",
-            "doc_id": doc_id
+            "doc_id": doc_id,
+            "actor_id": current_user.id
         })
     except Exception:
         pass

@@ -4,10 +4,27 @@
       <template #header>
         <div class="card-header">
           <span>点名</span>
-          <div>
+          <div class="header-actions">
             <el-tag :type="allPresent ? 'success' : 'warning'" style="margin-right: 12px">
               出席 {{ presentCount }} / {{ totalCount }}
             </el-tag>
+            <el-button
+              type="primary"
+              size="small"
+              :loading="markingAll"
+              :disabled="!totalCount || allPresent"
+              @click="setAllPresent(true)"
+            >
+              一键全部出席
+            </el-button>
+            <el-button
+              size="small"
+              :loading="markingAll"
+              :disabled="!totalCount || presentCount === 0"
+              @click="setAllPresent(false)"
+            >
+              全部未出席
+            </el-button>
           </div>
         </div>
       </template>
@@ -62,6 +79,7 @@ import { useWebSocket } from '../../composables/useWebSocket'
 
 const rollcallData = ref([])
 const activeDelegations = ref([])
+const markingAll = ref(false)
 
 // WebSocket 监听点名更新
 let wsCleanup = null
@@ -70,7 +88,11 @@ onMounted(() => {
   const ws = useWebSocket()
   const handler = (data) => {
     if (data.type === 'rollcall_updated') {
-      // 就地更新对应代表的状态，无需整表重载
+      // scope=all 是整表变更（一键出席），重新拉取；否则就地更新单个代表
+      if (data.scope === 'all') {
+        loadRollCall()
+        return
+      }
       const found = rollcallData.value.find(d => d.id === data.delegate_id)
       if (found) {
         found.is_present = data.is_present
@@ -130,11 +152,27 @@ async function toggleDelegate(delegateId, currentState) {
   }
 }
 
-onMounted(loadRollCall)
+// 一键设置全部代表的出席状态（后端单次批量更新 + 一次广播）
+async function setAllPresent(isPresent) {
+  markingAll.value = true
+  try {
+    const { data } = await api.put('/api/staff/rollcall/all', { is_present: isPresent })
+    // 本地立即反映，不依赖 WS 回环
+    rollcallData.value.forEach(d => { d.is_present = isPresent })
+    ElMessage.success(isPresent
+      ? `已将 ${data.updated ?? totalCount.value} 位代表标记为出席`
+      : `已取消全部出席标记`)
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '操作失败')
+  } finally {
+    markingAll.value = false
+  }
+}
 </script>
 
 <style scoped>
 .card-header { display: flex; justify-content: space-between; align-items: center; }
+.header-actions { display: flex; align-items: center; }
 
 .delegation-header {
   display: flex;

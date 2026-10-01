@@ -15,7 +15,7 @@ from models.committee import Committee
 from models.directive import Directive
 from models.document import Document
 from models.update import Update
-from services import require_role
+from services import require_role, require_feature
 from models.agenda import AgendaItem
 from utils.document_types import (
     find_document_type,
@@ -58,6 +58,24 @@ def drafter_display_name(current_user: User, delegation) -> str:
     return current_user.username or ""
 
 
+def recalled_file_paths(db: Session, committee_id: int) -> set:
+    """本委员会内「已撤回文件」对应的存储文件名集合。
+
+    文件发布到会议文件时只生成一条 type="file" 的 Update，二者仅以 file_path 关联；
+    而撤回只改 Document.recalled。因此读取端必须据此过滤，
+    否则代表仍能在会议文件/局势更新里看到并下载已撤回的文件。
+    恢复（recalled=False）后会自动重新可见。
+    """
+    if not committee_id:
+        return set()
+    rows = db.query(Document.file_path).filter(
+        Document.committee_id == committee_id,
+        Document.recalled.is_(True),
+        Document.file_path.isnot(None)
+    ).all()
+    return {r[0] for r in rows if r[0]}
+
+
 # ==================== 提交指令 ====================
 
 class DirectiveCreate(BaseModel):
@@ -68,7 +86,7 @@ class DirectiveCreate(BaseModel):
 
 
 @router.post("/directives")
-def submit_directive(
+async def submit_directive(
     data: DirectiveCreate,
     current_user: User = Depends(require_role("delegate")),
     db: Session = Depends(get_db)
@@ -92,6 +110,18 @@ def submit_directive(
     )
     db.add(directive)
     db.commit()
+
+    # 通知本委员会学团：有新的指令待处理（学团端据此点亮「指令管理」提示）
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.send_to_committee_staff(delegation.committee_id, {
+            "type": "directives_changed",
+            "action": "created",
+            "directive_id": directive.id
+        }, db)
+    except Exception:
+        pass
+
     return {"message": "提交成功"}
 
 
@@ -415,7 +445,7 @@ def list_my_endorsement_status(
 @router.get("/updates")
 def list_updates_for_me(
     keyword: str = None,
-    current_user: User = Depends(require_role("delegate")),
+    current_user: User = Depends(require_feature("updates", "delegate")),
     db: Session = Depends(get_db)
 ):
     """获取局势更新（包括文本和文件类型），支持关键字搜索（包括附件内容）"""
@@ -431,8 +461,12 @@ def list_updates_for_me(
         Update.committee_id == delegation.committee_id
     ).order_by(Update.created_at.desc()).all()
 
+    recalled = recalled_file_paths(db, delegation.committee_id)
     result = []
     for u in all_updates:
+        # 已撤回文件对应的更新不再对代表可见
+        if u.file_path and u.file_path in recalled:
+            continue
         if not u.visibility or current_user.id in u.visibility:
             # 如果有关键字，检查是否匹配
             if keyword:
@@ -482,8 +516,12 @@ def list_meeting_files_for_me(
         Update.type == "file"
     ).order_by(Update.created_at.desc()).all()
 
+    recalled = recalled_file_paths(db, delegation.committee_id)
     result = []
     for u in all_updates:
+        # 已撤回的文件不再出现在会议文件页
+        if u.file_path and u.file_path in recalled:
+            continue
         if not u.visibility or current_user.id in u.visibility:
             # 如果有关键字，检查是否匹配
             if keyword:
@@ -607,6 +645,9 @@ def download_file(
         # 代表的委员会归属来自代表团，而非 User.committee_id
         delegation = db.query(Delegation).filter(Delegation.id == user.delegation_id).first() if user.delegation_id else None
         my_committee = delegation.committee_id if delegation else user.committee_id
+        # 已撤回的文件不允许下载（即使拿到了文件名）
+        if filename in recalled_file_paths(db, my_committee):
+            raise HTTPException(status_code=403, detail="该文件已被撤回")
         docs = db.query(Document).filter(Document.file_path == filename).all()
         updates = db.query(Update).filter(Update.file_path == filename).all()
         # 已入库文件按委员会隔离；未入库临时上传放行（UUID 不可猜测）

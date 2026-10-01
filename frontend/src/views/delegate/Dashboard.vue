@@ -25,13 +25,13 @@
 
         <el-divider />
 
-        <el-menu-item index="/delegate/async-messages" :class="{ 'has-notification': notifications.messages }" @click="clearNotification('messages')">
+        <el-menu-item v-if="hasFeature('updates')" index="/delegate/async-messages" :class="{ 'has-notification': notifications.messages }" @click="clearNotification('messages')">
           <el-icon><Message /></el-icon>
           <span>非对称消息</span>
           <span v-if="notifications.messages" class="notif-dot" />
         </el-menu-item>
 
-        <el-menu-item index="/delegate/updates" :class="{ 'has-notification': notifications.updates }" @click="clearNotification('updates')">
+        <el-menu-item v-if="hasFeature('updates')" index="/delegate/updates" :class="{ 'has-notification': notifications.updates }" @click="clearNotification('updates')">
           <el-icon><Bell /></el-icon>
           <span>局势更新</span>
           <span v-if="notifications.updates" class="notif-dot" />
@@ -102,6 +102,7 @@ import { HomeFilled, Edit, Bell, Folder, ArrowDown, FullScreen, Aim, Back, List,
 import api from '../../api'
 import ChangePassword from '../../components/ChangePassword.vue'
 import CommitteeBrand from '../../components/CommitteeBrand.vue'
+import { setCommitteeFeatures, hasFeature } from '../../composables/useCommitteeFeatures'
 import { useNotification } from '../../composables/useNotification'
 
 const route = useRoute()
@@ -163,6 +164,7 @@ onMounted(async () => {
   try {
     const { data } = await api.get('/api/delegate/me')
     delegationName.value = data.delegation_name
+    setCommitteeFeatures(data.committee_features, authStore.user?.id)
     brandIcon.value = data.logo_icon || ''
     brandImage.value = data.logo_image || ''
     brandTitle.value = data.display_title || ''
