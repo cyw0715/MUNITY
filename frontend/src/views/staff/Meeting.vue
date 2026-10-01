@@ -198,13 +198,11 @@
       <el-form :model="motionForm" label-position="top">
         <el-form-item label="动议类型">
           <el-select v-model="motionForm.type" style="width: 100%" @change="onMotionTypeChange">
-            <el-option-group label="内置类型">
-              <el-option label="有主持核心磋商" value="moderated_caucus" />
-              <el-option label="自由辩论" value="unmoderated_caucus" />
-              <el-option label="自由磋商" value="free_caucus" />
+            <el-option-group v-if="builtinOptions.length" label="内置类型">
+              <el-option v-for="o in builtinOptions" :key="o.value" :label="o.label" :value="o.value" />
             </el-option-group>
-            <el-option-group label="自定义类型">
-              <el-option v-for="mt in motionTypesConfig.filter(m => !m.is_builtin)" :key="mt.name" :label="mt.name" :value="mt.name" />
+            <el-option-group v-if="customOptions.length" label="自定义类型">
+              <el-option v-for="mt in customOptions" :key="mt.name" :label="mt.name" :value="mt.name" />
             </el-option-group>
           </el-select>
         </el-form-item>
@@ -314,19 +312,24 @@ import { VideoPlay, VideoPause, CircleClose, Plus, Close, Edit, Microphone, Oper
 import { useMeetingStore } from '../../stores/meeting'
 import api from '../../api'
 import draggable from 'vuedraggable'
+import { resolveMotionTypes, splitMotionTypeOptions } from '../../constants/motionTypes'
 
 const store = useMeetingStore()
-const motionTypesConfig = ref([])  // 所有类型（内置+自定义）
+const motionTypesConfig = ref([])  // 本委员会启用的全部动议类型（内置+自定义）
 const BUILTIN_KEYS = ['moderated_caucus', 'unmoderated_caucus', 'free_caucus']
 const BUILTIN_LABELS = { moderated_caucus: '有主持核心磋商', unmoderated_caucus: '自由辩论', free_caucus: '自由磋商' }
 
-// 从 committee 接口加载所有动议类型
+// 从 committee 接口加载所有动议类型；存储为空时回退内置默认
 async function loadMotionTypesConfig() {
   try {
     const { data } = await api.get('/api/staff/committee')
-    motionTypesConfig.value = data.motion_types || []
+    motionTypesConfig.value = resolveMotionTypes(data.motion_types, data.motion_types_configured)
   } catch (e) {}
 }
+
+// 按本委员会实际启用的类型渲染选项：被删除的内置类型不再出现
+const builtinOptions = computed(() => splitMotionTypeOptions(motionTypesConfig.value).builtinOptions)
+const customOptions = computed(() => splitMotionTypeOptions(motionTypesConfig.value).customOptions)
 
 // 查找类型配置（内置类型用硬编码，自定义类型查列表）
 function findTypeConfig(type) {
@@ -464,10 +467,19 @@ async function handleReorder() {
 
 // 动议操作
 async function showMotionDialog() {
-  motionForm.value = { type: 'moderated_caucus', topic: '', unit_duration: 60, total_duration: 300 }
   motionProposerDelegation.value = null
   motionProposerDelegate.value = null
   await Promise.all([store.loadDelegates(), loadMotionTypesConfig()])
+  // 默认选中第一个仍启用的类型：默认内置类型可能已被本委员会删除
+  const first = builtinOptions.value[0] || customOptions.value[0]
+  const type = first ? (first.value ?? first.name) : ''
+  const cfg = findTypeConfig(type)
+  motionForm.value = {
+    type,
+    topic: '',
+    unit_duration: cfg?.default_unit_duration || 60,
+    total_duration: cfg?.default_total_duration || 300,
+  }
   motionDialogVisible.value = true
 }
 

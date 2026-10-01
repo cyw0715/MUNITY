@@ -504,7 +504,8 @@ def get_committee_info(current_user: User = Depends(require_role("staff")), db: 
         "id": committee.id,
         "name": committee.name,
         "features": committee.features or [],
-        "motion_types": committee.motion_types or []
+        "motion_types": committee.motion_types or [],
+        "motion_types_configured": bool(committee.motion_types_configured)
     }
 
 
@@ -522,6 +523,8 @@ def update_motion_types(
     
     motion_types = data.get("motion_types", [])
     committee.motion_types = motion_types
+    # 标记为已配置：此后即使删空也不再回退内置默认
+    committee.motion_types_configured = True
     db.commit()
     return {"motion_types": committee.motion_types}
 

@@ -98,12 +98,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api from '../../api'
-
-const BUILTIN_TYPES = [
-  { name: '有主持核心磋商', is_builtin: true, need_speakers_list: true, need_unit_duration: true, need_total_duration: true, default_unit_duration: 60, default_total_duration: 300 },
-  { name: '自由辩论', is_builtin: true, need_speakers_list: true, need_unit_duration: true, need_total_duration: true, default_unit_duration: 60, default_total_duration: 300 },
-  { name: '自由磋商', is_builtin: true, need_speakers_list: false, need_unit_duration: false, need_total_duration: true, default_unit_duration: 0, default_total_duration: 600 },
-]
+import { defaultMotionTypes, resolveMotionTypes, toStoredMotionTypes } from '../../constants/motionTypes'
 
 const motionTypes = ref([])
 const dialogVisible = ref(false)
@@ -125,19 +120,8 @@ const form = ref(defaultForm())
 async function loadMotionTypes() {
   try {
     const { data } = await api.get('/api/staff/committee')
-    const custom = data.motion_types || []
-    // Merge builtins with custom — custom overrides builtins with same name
-    const merged = [...BUILTIN_TYPES]
-    for (const c of custom) {
-      const idx = merged.findIndex(m => m.name === c.name && m.is_builtin)
-      if (idx >= 0) {
-        // Custom version overrides builtin
-        merged[idx] = { ...merged[idx], ...c, is_builtin: true }
-      } else {
-        merged.push(c)
-      }
-    }
-    motionTypes.value = merged
+    // 以已保存的列表为准（含删空的情况）：这样删除内置类型后刷新不会回弹
+    motionTypes.value = resolveMotionTypes(data.motion_types, data.motion_types_configured)
   } catch (e) {}
 }
 
@@ -167,7 +151,7 @@ async function handleSave() {
       newList.push({ ...form.value })
     }
     // Strip frontend-only is_builtin flag before saving
-    const saveList = newList.map(({ is_builtin, ...rest }) => rest)
+    const saveList = toStoredMotionTypes(newList)
     await api.put('/api/staff/motion-types', { motion_types: saveList })
     motionTypes.value = newList
     ElMessage.success(editIndex.value !== null ? '已更新' : '已添加')
@@ -182,14 +166,18 @@ async function handleSave() {
 async function handleDelete(index) {
   const item = motionTypes.value[index]
   if (item.is_builtin) {
-    await ElMessageBox.confirm(`确定删除「${item.name}」？该类型将从本委员会移除。`, '删除内置类型', { type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定删除内置类型「${item.name}」？删除后本委员会将不再提供该动议类型，且刷新后不会自动恢复（可用「恢复默认」找回）。`,
+      '删除内置类型',
+      { type: 'warning', confirmButtonText: '确定删除' }
+    )
   } else {
     await ElMessageBox.confirm('确定删除该动议类型？', '提示', { type: 'warning' })
   }
   try {
     const newList = motionTypes.value.filter((_, i) => i !== index)
     // Strip frontend-only is_builtin flag before saving
-    const saveList = newList.map(({ is_builtin, ...rest }) => rest)
+    const saveList = toStoredMotionTypes(newList)
     await api.put('/api/staff/motion-types', { motion_types: saveList })
     motionTypes.value = newList
     ElMessage.success('已删除')
@@ -202,9 +190,8 @@ async function resetBuiltins() {
   await ElMessageBox.confirm('恢复默认将重置所有动议类型为系统内置配置，自定义类型将保留。', '确认', { type: 'info' })
   try {
     const custom = motionTypes.value.filter(m => !m.is_builtin)
-    const newList = [...BUILTIN_TYPES, ...custom]
-    const saveList = newList.map(({ is_builtin, ...rest }) => rest)
-    await api.put('/api/staff/motion-types', { motion_types: saveList })
+    const newList = [...defaultMotionTypes(), ...custom]
+    await api.put('/api/staff/motion-types', { motion_types: toStoredMotionTypes(newList) })
     motionTypes.value = newList
     ElMessage.success('已恢复默认')
   } catch (err) {
