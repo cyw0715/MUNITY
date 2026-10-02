@@ -1335,29 +1335,26 @@ async def create_update(
     current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
-    committee_ids = get_staff_committee_list(current_user)
-    created = []
-    for cid in committee_ids:
-        update = Update(
-            committee_id=cid,
-            sender_id=current_user.id,
-            title=data.title,
-            content=data.content,
-            type=data.type,
-            visibility=None  # 所有更新对所有代表可见
-        )
-        db.add(update)
-        created.append(update)
+    # 只发布到当前所属会场，与文件发布保持一致
+    committee_id = get_staff_committee(current_user)
+    update = Update(
+        committee_id=committee_id,
+        sender_id=current_user.id,
+        title=data.title,
+        content=data.content,
+        type=data.type,
+        visibility=None  # 所有更新对所有代表可见
+    )
+    db.add(update)
     db.commit()
 
-    # WS 广播：所有委员会
+    # WS 广播：当前会场
     try:
         from services.websocket_manager import ws_manager
-        for cid in committee_ids:
-            await ws_manager.broadcast_committee(cid, {
-                "type": "updates_changed",
-                "action": "created"
-            })
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
     except Exception:
         pass
 
@@ -1370,25 +1367,24 @@ async def delete_update(
     current_user: User = Depends(require_feature("updates", "staff")),
     db: Session = Depends(get_db)
 ):
-    committee_ids = get_staff_committee_list(current_user)
-    updates = db.query(Update).filter(
+    # 与发布保持一致：只操作当前所属会场内的更新
+    committee_id = get_staff_committee(current_user)
+    update = db.query(Update).filter(
         Update.id == update_id,
-        Update.committee_id.in_(committee_ids)
-    ).all()
-    if not updates:
+        Update.committee_id == committee_id
+    ).first()
+    if not update:
         raise HTTPException(status_code=404, detail="更新不存在")
-    for u in updates:
-        db.delete(u)
+    db.delete(update)
     db.commit()
 
-    # WS 广播：所有委员会
+    # WS 广播：当前会场
     try:
         from services.websocket_manager import ws_manager
-        for cid in committee_ids:
-            await ws_manager.broadcast_committee(cid, {
-                "type": "updates_changed",
-                "action": "deleted"
-            })
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "deleted"
+        })
     except Exception:
         pass
 
@@ -1616,34 +1612,33 @@ async def publish_direct(
     db: Session = Depends(get_db)
 ):
     """主席团直接发布文件到会议文件"""
-    committee_ids = get_staff_committee_list(current_user)
+    # 只发布到当前所属会场，避免一条文件出现在学团可访问的所有会场里
+    committee_id = get_staff_committee(current_user)
 
     # 类型显示名取自本委员会的文件类型配置，自定义类型也能正确展示
-    committee = db.query(Committee).filter(Committee.id == committee_ids[0]).first() if committee_ids else None
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
     type_label = document_type_label(committee, data.doc_type)
     title = f"[{type_label}] {data.title}"
     content = f"主席团发布\n\n{data.content}"
 
-    for cid in committee_ids:
-        update = Update(
-            committee_id=cid,
-            sender_id=current_user.id,
-            title=title,
-            content=content,
-            type="file",
-            visibility=[]
-        )
-        db.add(update)
+    update = Update(
+        committee_id=committee_id,
+        sender_id=current_user.id,
+        title=title,
+        content=content,
+        type="file",
+        visibility=[]
+    )
+    db.add(update)
     db.commit()
 
-    # WS 广播：所有委员会
+    # WS 广播：当前会场
     try:
         from services.websocket_manager import ws_manager
-        for cid in committee_ids:
-            await ws_manager.broadcast_committee(cid, {
-                "type": "updates_changed",
-                "action": "created"
-            })
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
     except Exception:
         pass
 
@@ -1661,11 +1656,11 @@ async def publish_document_to_updates(
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
 ):
-    """将文件发布到会议文件"""
-    committee_ids = get_staff_committee_list(current_user)
+    """将文件发布到会议文件（仅当前所属会场）"""
+    committee_id = get_staff_committee(current_user)
     doc = db.query(Document).filter(
         Document.id == doc_id,
-        Document.committee_id.in_(committee_ids)
+        Document.committee_id == committee_id
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="文件不存在")
@@ -1700,29 +1695,27 @@ async def publish_document_to_updates(
     content_parts.append(f"\n{doc.content or ''}")
     content = "\n".join(content_parts)
 
-    for cid in committee_ids:
-        update = Update(
-            committee_id=cid,
-            sender_id=current_user.id,
-            title=title,
-            content=content,
-            type="file",
-            file_path=doc.file_path,
-            visibility=data.visibility
-        )
-        db.add(update)
+    update = Update(
+        committee_id=committee_id,
+        sender_id=current_user.id,
+        title=title,
+        content=content,
+        type="file",
+        file_path=doc.file_path,
+        visibility=data.visibility
+    )
+    db.add(update)
     # 标记文档为已发布
     doc.published = True
     db.commit()
 
-    # WS 广播：所有委员会
+    # WS 广播：当前会场
     try:
         from services.websocket_manager import ws_manager
-        for cid in committee_ids:
-            await ws_manager.broadcast_committee(cid, {
-                "type": "updates_changed",
-                "action": "created"
-            })
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
     except Exception:
         pass
 
@@ -1941,40 +1934,39 @@ async def publish_with_file(
     current_user: User = Depends(require_role("staff")),
     db: Session = Depends(get_db)
 ):
-    """主席团发布带附件的文件"""
-    committee_ids = get_staff_committee_list(current_user)
+    """主席团发布带附件的文件（仅当前所属会场）"""
+    # 只发布到当前所属会场
+    committee_id = get_staff_committee(current_user)
     
     file_path = None
     if file and file.filename:
         from utils.security import save_upload_safely
         file_path = await save_upload_safely(file, UPLOAD_DIR, uuid.uuid4().hex)
     
-    committee = db.query(Committee).filter(Committee.id == committee_ids[0]).first() if committee_ids else None
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
     type_label = document_type_label(committee, doc_type)
     update_title = f"[{type_label}] {title}"
     update_content = f"主席团发布\n\n{content}" if content else "主席团发布"
     
-    for cid in committee_ids:
-        update = Update(
-            committee_id=cid,
-            sender_id=current_user.id,
-            title=update_title,
-            content=update_content,
-            type="file",
-            file_path=file_path,
-            visibility=[]
-        )
-        db.add(update)
+    update = Update(
+        committee_id=committee_id,
+        sender_id=current_user.id,
+        title=update_title,
+        content=update_content,
+        type="file",
+        file_path=file_path,
+        visibility=[]
+    )
+    db.add(update)
     db.commit()
 
-    # WS 广播：所有委员会
+    # WS 广播：当前会场
     try:
         from services.websocket_manager import ws_manager
-        for cid in committee_ids:
-            await ws_manager.broadcast_committee(cid, {
-                "type": "updates_changed",
-                "action": "created"
-            })
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "updates_changed",
+            "action": "created"
+        })
     except Exception:
         pass
 
