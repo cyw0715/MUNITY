@@ -52,7 +52,7 @@
               <div class="speaker-name">
                 <span class="flag-dot" :style="{ background: getSpeakerColor(store.currentSpeaker.delegation_name) }"></span>
                 {{ store.currentSpeaker.delegation_name }}
-                <span v-if="store.currentSpeaker.delegate_name" class="delegate-sub">— {{ store.currentSpeaker.delegate_name }}</span>
+                <span v-if="store.currentSpeaker.delegate_seat" class="delegate-sub">— {{ store.currentSpeaker.delegate_seat }}</span>
               </div>
               <div class="countdown" :class="{ warning: store.unitRemaining <= 10 && store.unitRemaining > 0, critical: store.unitRemaining <= 5 && store.unitRemaining > 0 }">
                 {{ store.formattedUnitTime }}
