@@ -234,12 +234,12 @@
         </el-form-item>
         <el-divider>代表团设置</el-divider>
         <el-form-item label="否决权国家">
-          <el-select v-model="createForm.veto_delegations" multiple style="width: 100%">
+          <el-select v-model="createForm.veto_delegations" multiple filterable style="width: 100%">
             <el-option v-for="d in delegations" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="观察员国家">
-          <el-select v-model="createForm.excluded_delegations" multiple style="width: 100%">
+          <el-select v-model="createForm.excluded_delegations" multiple filterable style="width: 100%">
             <el-option v-for="d in delegations" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>

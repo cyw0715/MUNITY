@@ -68,7 +68,7 @@
               :label="'联署代表团' + (endorsementMode === 'required' ? '（必选）' : '（可选）')"
               :prop="endorsementMode === 'required' ? 'endorsing_delegations' : ''"
             >
-              <el-select v-model="documentForm.endorsing_delegations" multiple placeholder="选择需要联署的代表团" style="width: 100%">
+              <el-select v-model="documentForm.endorsing_delegations" multiple filterable placeholder="选择需要联署的代表团" style="width: 100%">
                 <el-option
                   v-for="d in availableEndorsingDelegations"
                   :key="d.id"

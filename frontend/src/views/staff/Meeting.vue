@@ -210,10 +210,10 @@
           <el-input v-model="motionForm.topic" placeholder="动议讨论的主题…" />
         </el-form-item>
         <el-form-item label="提出者代表团">
-          <el-select v-model="motionProposerDelegation" placeholder="选择代表团" clearable style="width: 100%; margin-bottom: 8px" @change="onMotionProposerDelegationChange">
+          <el-select v-model="motionProposerDelegation" placeholder="选择代表团" filterable clearable style="width: 100%; margin-bottom: 8px" @change="onMotionProposerDelegationChange">
             <el-option v-for="d in store.delegations" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
-          <el-select v-model="motionProposerDelegate" placeholder="选择代表（可选）" clearable style="width: 100%" :disabled="!motionProposerDelegation">
+          <el-select v-model="motionProposerDelegate" placeholder="选择代表（可选）" filterable clearable style="width: 100%" :disabled="!motionProposerDelegation">
             <el-option v-for="m in filteredProposers" :key="m.id" :label="m.seat + (m.is_leader ? ' (阁首)' : '')" :value="m.id" />
           </el-select>
         </el-form-item>
@@ -245,12 +245,12 @@
     <el-dialog v-model="addSpeakerDialogVisible" title="添加发言者" width="400px">
       <el-form label-position="top">
         <el-form-item label="代表团">
-          <el-select v-model="selectedDelegationId" placeholder="选择代表团" style="width: 100%" @change="onDelegationChange">
+          <el-select v-model="selectedDelegationId" placeholder="选择代表团" filterable style="width: 100%" @change="onDelegationChange">
             <el-option v-for="d in store.delegations" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
-        <el-form-item label="代表" v-if="selectedDelegationId">
-          <el-select v-model="selectedDelegateId" placeholder="选择代表" style="width: 100%">
+        <el-form-item label="代表（可选）" v-if="selectedDelegationId">
+          <el-select v-model="selectedDelegateId" placeholder="留空则由该代表团整体发言" filterable clearable style="width: 100%">
             <el-option v-for="m in filteredDelegates" :key="m.id" :label="m.seat + (m.is_leader ? ' (阁首)' : '')" :value="m.id" />
           </el-select>
         </el-form-item>
@@ -517,7 +517,8 @@ async function showAddSpeakerDialog() {
 }
 
 async function handleAddSpeaker() {
-  if (!selectedDelegateId.value) { ElMessage.warning('请选择代表'); return }
+  // 代表可留空：只选代表团时，视为该代表团整体发言
+  if (!selectedDelegationId.value) { ElMessage.warning('请选择代表团'); return }
   addLoading.value = true
   const ok = await store.addSpeaker(selectedDelegationId.value, selectedDelegateId.value)
   addLoading.value = false

@@ -187,6 +187,7 @@
             <el-select
               v-model="currentDelegationId"
               placeholder="选择代表团添加"
+              filterable
               clearable
               style="width: 100%; margin-bottom: 8px"
               @change="addDelegation"

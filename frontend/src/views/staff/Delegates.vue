@@ -62,7 +62,7 @@
           <el-input v-model="addForm.seat" />
         </el-form-item>
         <el-form-item label="代表团">
-          <el-select v-model="addForm.delegation_id" placeholder="选择代表团（可选）" clearable style="width: 100%">
+          <el-select v-model="addForm.delegation_id" placeholder="选择代表团（可选）" filterable clearable style="width: 100%">
             <el-option v-for="d in delegations" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
@@ -94,7 +94,7 @@
 
     <!-- 分配代表团对话框 -->
     <el-dialog v-model="assignDialogVisible" title="分配代表团" width="400px">
-      <el-select v-model="selectedDelegationId" placeholder="选择代表团" style="width: 100%">
+      <el-select v-model="selectedDelegationId" placeholder="选择代表团" filterable style="width: 100%">
         <el-option v-for="d in delegations" :key="d.id" :label="d.name" :value="d.id" />
       </el-select>
       <template #footer>
@@ -116,7 +116,7 @@
       />
       <el-form style="margin-top: 12px">
         <el-form-item label="默认代表团">
-          <el-select v-model="batchDelegationId" placeholder="未指定代表团时使用（可选）" clearable style="width: 100%">
+          <el-select v-model="batchDelegationId" placeholder="未指定代表团时使用（可选）" filterable clearable style="width: 100%">
             <el-option v-for="d in delegations" :key="d.id" :label="d.name" :value="d.id" />
           </el-select>
         </el-form-item>
