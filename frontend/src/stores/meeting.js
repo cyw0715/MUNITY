@@ -312,6 +312,15 @@ export const useMeetingStore = defineStore('meeting', () => {
     }
     currentSpeaker.value = speaker
     speechContent.value = speaker.content || ''
+
+    // 切到新发言者时刷新单位计时：
+    // 否则上一位的剩余时间（甚至已归零的 00:00）会被带到下一位，
+    // 表现为「换了人但单位计时器没重置」。
+    if (activeMotion.value?.unit_duration) {
+      unitRemaining.value = activeMotion.value.unit_duration
+      elapsedSeconds.value = 0
+      await pushTimerState()
+    }
     try {
       const { data } = await api.get(`/api/staff/motions/${activeMotion.value.id}/speakers/${speaker.id}`)
       speechContent.value = data.content || ''
@@ -337,10 +346,11 @@ export const useMeetingStore = defineStore('meeting', () => {
         await api.put(`/api/staff/motions/${activeMotion.value.id}/speakers/${currentSpeaker.value.id}/end?duration=${elapsedSeconds.value}`)
         elapsedSeconds.value = 0
         currentSpeaker.value = null
-        // 重置单位计时
+        // 重置单位计时，并同步到服务端（否则其它端与刷新后仍是旧的 00:00）
         if (activeMotion.value?.unit_duration) {
           unitRemaining.value = activeMotion.value.unit_duration
         }
+        await pushTimerState()
         await loadSpeakers()
       } catch (e) {
         ElMessage.error('操作失败')
