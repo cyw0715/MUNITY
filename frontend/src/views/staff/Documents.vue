@@ -260,6 +260,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { displayFileName } from '../../utils/file'
 
 const keyword = ref('')
 const documents = ref([])
@@ -377,7 +378,7 @@ async function downloadFile(filename) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = filename
+  link.download = displayFileName(filename)
   link.click()
   URL.revokeObjectURL(url)
 }

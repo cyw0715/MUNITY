@@ -103,6 +103,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { displayFileName } from '../../utils/file'
 import { resolveDocumentTypes, findDocType } from '../../constants/documentTypes'
 
 const activeTab = ref('pending')
@@ -152,7 +153,7 @@ async function downloadFile(filename) {
   const blob = await res.blob()
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
-  link.download = filename
+  link.download = displayFileName(filename)
   link.click()
 }
 

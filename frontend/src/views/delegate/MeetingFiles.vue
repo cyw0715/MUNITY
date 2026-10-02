@@ -62,6 +62,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import api from '../../api'
 import { Search } from '@element-plus/icons-vue'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { displayFileName } from '../../utils/file'
 
 const files = ref([])
 const keyword = ref('')
@@ -86,8 +87,7 @@ async function downloadFile(filename) {
   const blob = await res.blob()
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
-  link.download = filename
-  link.download = filename
+  link.download = displayFileName(filename)
   link.click()
 }
 

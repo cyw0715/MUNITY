@@ -201,17 +201,12 @@ async def submit_document(
         for ed_id in endorsing_list:
             endorsement_data[str(ed_id)] = {"status": "pending", "note": "", "updated_at": now_str}
 
-    # 处理文件上传
+    # 处理文件上传：与学团端统一走 save_upload_safely。
+    # 原先直接拼 uuid_原始文件名，中文标点会原样存盘，下载时被 safe_join 判为非法文件名。
     file_path = None
     if file and file.filename:
-        if not file.filename.endswith('.docx'):
-            raise HTTPException(status_code=400, detail="只支持 .docx 文件")
-        filename = f"{uuid.uuid4().hex}_{file.filename}"
-        filepath = os.path.join(UPLOAD_DIR, filename)
-        file_content = await file.read()
-        with open(filepath, "wb") as f:
-            f.write(file_content)
-        file_path = filename
+        from utils.security import save_upload_safely
+        file_path = await save_upload_safely(file, UPLOAD_DIR, uuid.uuid4().hex)
 
     document = Document(
         committee_id=delegation.committee_id,

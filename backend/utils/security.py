@@ -16,7 +16,12 @@ from config import (
     MAX_UPLOAD_BYTES,
 )
 
-_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9._一-鿿-]+$")
+# 文件名安全校验：只排除控制字符与路径分隔符。
+# 中文标点（如「、」U+3001）、全角符号、空格等都是合法文件名字符；早先只放行
+# 汉字 U+4E00-9FFF，使得「联合王国、奥地利帝国…协定.docx」这类文件在下载时
+# 被判「非法文件名」（400），尽管文件就在磁盘上。
+# 路径穿越已由下面的分隔符检查、basename 相等检查与 base_dir 包含性检查兜底。
+_SAFE_NAME_RE = re.compile(r"^[^\x00-\x1f\x7f/\\]+$")
 
 
 def safe_join(base_dir: str, filename: str) -> str:
@@ -62,8 +67,9 @@ async def save_upload_safely(file: UploadFile, upload_dir: str, uuid_hex: str) -
     if ext not in ALLOWED_UPLOAD_EXTENSIONS:
         raise HTTPException(status_code=400, detail="只支持 .docx 文件")
 
-    # 防御：清理原始名中的危险字符后再拼接
-    safe_display = re.sub(r"[^\w.\-一-鿿]", "_", display)
+    # 防御：清理原始名中的危险字符后再拼接（只替换控制字符与路径分隔符，
+    # 保留中文标点，否则存下来的名字会对不上前端展示、也与下载校验不一致）
+    safe_display = re.sub(r"[\x00-\x1f\x7f/\\]", "_", display)
     if not safe_display or safe_display in (".", ".."):
         raise HTTPException(status_code=400, detail="非法文件名")
 

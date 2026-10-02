@@ -206,6 +206,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { displayFileName } from '../../utils/file'
 import { resolveDocumentTypes, docTypeValue, findDocType, ENDORSEMENT_NONE } from '../../constants/documentTypes'
 
 const activeTab = ref('directive')
@@ -458,8 +459,7 @@ async function downloadFile(filename) {
   const blob = await res.blob()
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
-  link.download = filename
-  link.download = filename
+  link.download = displayFileName(filename)
   link.click()
 }
 
