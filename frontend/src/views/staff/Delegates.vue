@@ -34,7 +34,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="380">
+        <el-table-column label="操作" width="480">
           <template #default="{ row }">
             <div class="action-buttons">
               <el-button size="small" @click="showEditSeatDialog(row)">编辑席位</el-button>
@@ -42,6 +42,7 @@
               <el-button size="small" :type="row.is_leader ? 'warning' : 'success'" @click="toggleLeader(row)">
                 {{ row.is_leader ? '取消阁首' : '设为阁首' }}
               </el-button>
+              <el-button size="small" @click="showResetPasswordDialog(row)">重置密码</el-button>
               <el-button size="small" type="danger" @click="handleDelete(row)">删除</el-button>
             </div>
           </template>
@@ -103,6 +104,18 @@
       </template>
     </el-dialog>
 
+    <!-- 重置密码对话框 -->
+    <el-dialog v-model="resetPwdDialogVisible" title="重置代表密码" width="400px">
+      <p style="margin-bottom: 12px; color: #909399; font-size: 13px">
+        将覆写账号 <strong>{{ resetPwdDelegate?.username }}</strong> 的密码，该代表需用新密码重新登录。
+      </p>
+      <el-input v-model="resetPwdValue" type="password" show-password placeholder="请输入新密码" />
+      <template #footer>
+        <el-button @click="resetPwdDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="resetPwdLoading" @click="handleResetPassword">确定</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 批量导入对话框 -->
     <el-dialog v-model="batchDialogVisible" title="批量导入代表" width="500px">
       <p style="margin-bottom: 12px; color: #909399; font-size: 13px">
@@ -151,6 +164,10 @@ const editSeatDelegate = ref(null)
 const editSeatValue = ref('')
 const batchText = ref('')
 const batchDelegationId = ref(null)
+const resetPwdDialogVisible = ref(false)
+const resetPwdDelegate = ref(null)
+const resetPwdValue = ref('')
+const resetPwdLoading = ref(false)
 
 const addForm = ref({ username: '', password: '', seat: '', delegation_id: null, is_leader: false })
 const addRules = {
@@ -222,6 +239,32 @@ async function handleEditSeat() {
     ElMessage.error(err.response?.data?.detail || '修改失败')
   } finally {
     editSeatLoading.value = false
+  }
+}
+
+function showResetPasswordDialog(delegate) {
+  resetPwdDelegate.value = delegate
+  resetPwdValue.value = ''
+  resetPwdDialogVisible.value = true
+}
+
+async function handleResetPassword() {
+  if (!resetPwdValue.value) {
+    ElMessage.warning('请输入新密码')
+    return
+  }
+  resetPwdLoading.value = true
+  try {
+    await api.put(`/api/staff/delegates/${resetPwdDelegate.value.id}/password`, {
+      password: resetPwdValue.value
+    })
+    ElMessage.success('密码已重置')
+    resetPwdDialogVisible.value = false
+    resetPwdValue.value = ''
+  } catch (err) {
+    ElMessage.error(err.response?.data?.detail || '重置失败')
+  } finally {
+    resetPwdLoading.value = false
   }
 }
 

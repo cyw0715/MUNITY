@@ -22,6 +22,28 @@
       </div>
     </div>
 
+    <!-- 运维操作 -->
+    <el-card class="ops-card">
+      <template #header>
+        <div class="card-header">
+          <span class="card-title">
+            <el-icon><Refresh /></el-icon>
+            运维操作
+          </span>
+        </div>
+      </template>
+      <div class="ops-row">
+        <div class="ops-info">
+          <div class="ops-name">强制所有人刷新</div>
+          <div class="ops-desc">
+            通知所有在线用户重新加载页面，用于前端发布新版本后统一生效。
+            仅对当前在线（WebSocket 已连接）的人生效，正在填写的内容会丢失。
+          </div>
+        </div>
+        <el-button type="warning" :loading="forceReloading" @click="handleForceReload">强制刷新</el-button>
+      </div>
+    </el-card>
+
     <!-- 服务器资源监控看板 -->
     <el-card class="monitor-card">
       <template #header>
@@ -179,6 +201,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from '../../api'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { OfficeBuilding, User, Plus, Monitor, Refresh } from '@element-plus/icons-vue'
 import { useWebSocket } from '../../composables/useWebSocket'
 
@@ -188,6 +211,30 @@ const scope = ref('1m')
 const chartWidth = 240
 const chartHeight = 48
 let refreshTimer = null
+
+// ===== 运维操作 =====
+const forceReloading = ref(false)
+
+async function handleForceReload() {
+  try {
+    await ElMessageBox.confirm(
+      '将通知所有在线用户重新加载页面，正在填写的内容会丢失。确定继续？',
+      '强制所有人刷新',
+      { type: 'warning', confirmButtonText: '确定刷新', cancelButtonText: '取消' }
+    )
+  } catch (e) {
+    return  // 用户取消
+  }
+  forceReloading.value = true
+  try {
+    const { data } = await api.post('/api/admin/force-reload')
+    ElMessage.success(data.message || '已通知所有在线用户')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '操作失败')
+  } finally {
+    forceReloading.value = false
+  }
+}
 
 // ===== 实时监控 =====
 const { on: onWs, off: offWs, isConnected: wsConnected } = useWebSocket()
@@ -368,6 +415,12 @@ onUnmounted(() => {
 
 /* ===== 监控看板 ===== */
 .monitor-card { margin-bottom: 24px; }
+
+.ops-card { margin-bottom: 24px; }
+.ops-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ops-info { flex: 1; }
+.ops-name { font-size: 14px; font-weight: 600; color: #0f172a; }
+.ops-desc { font-size: 12px; color: #64748b; margin-top: 4px; line-height: 1.6; }
 .card-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 .card-title {
   display: flex; align-items: center; gap: 8px;

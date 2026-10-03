@@ -127,8 +127,25 @@ async def submit_directive(
 
 @router.get("/directives")
 def list_my_directives(current_user: User = Depends(require_feature("directives", "delegate")), db: Session = Depends(get_db)):
+    """代表查看自己提交的指令。
+
+    不返回 status：指令的处理进度（未读/推演与否）是学团内部工作流，
+    代表端不应查询，故显式挑字段而非直接序列化模型。
+    """
     delegation_id = get_delegate_info(current_user)
-    return db.query(Directive).filter(Directive.delegation_id == delegation_id).order_by(Directive.created_at.desc()).all()
+    directives = db.query(Directive).filter(
+        Directive.delegation_id == delegation_id
+    ).order_by(Directive.created_at.desc()).all()
+    return [{
+        "id": d.id,
+        "committee_id": d.committee_id,
+        "delegation_id": d.delegation_id,
+        "drafter": d.drafter,
+        "secrecy": d.secrecy,
+        "content": d.content,
+        "departments": d.departments or [],
+        "created_at": d.created_at.isoformat() if d.created_at else None,
+    } for d in directives]
 
 
 # ==================== 提交文件 ====================
@@ -249,10 +266,14 @@ async def submit_document(
 
 @router.get("/documents")
 def list_my_documents(current_user: User = Depends(require_role("delegate")), db: Session = Depends(get_db)):
+    """本代表团提交过的文件。
+
+    不过滤 recalled：代表应当能回顾自己提交过的历史记录（含被学团撤回的），
+    撤回只影响其他代表团看到的可见性。
+    """
     delegation_id = get_delegate_info(current_user)
     return db.query(Document).filter(
-        Document.delegation_id == delegation_id,
-        Document.recalled == False  # 过滤掉已撤回的文件
+        Document.delegation_id == delegation_id
     ).order_by(Document.created_at.desc()).all()
 
 
@@ -270,11 +291,11 @@ def list_endorsements(
     delegation_id = get_delegate_info(current_user)
     delegation = db.query(Delegation).filter(Delegation.id == delegation_id).first()
     
+    # 不做 recalled / published 过滤：撤回只影响代表端可见性，发布是学团放行的旁路，
+    # 都不应让阁首失去联署审批入口。可见性只取决于「同会场 + 本代表团在联署名单里」。
     documents = db.query(Document).filter(
         Document.committee_id == delegation.committee_id,
-        Document.endorsing_delegations != None,
-        Document.recalled == False,
-        Document.published == False
+        Document.endorsing_delegations != None
     ).all()
     
     result = []
@@ -404,7 +425,11 @@ def list_my_endorsement_status(
     current_user: User = Depends(require_role("delegate")),
     db: Session = Depends(get_db)
 ):
-    """查看当前代表团提交的文件的联署状态"""
+    """查看当前代表团提交的文件的联署情况。
+
+    只返回参与联署的代表团名单，不返回各自的审批结果：
+    某个国家是否通过/拒绝属于该联署方与学团之间的事，提交方不应看到。
+    """
     delegation_id = get_delegate_info(current_user)
     documents = db.query(Document).filter(
         Document.delegation_id == delegation_id,
@@ -414,16 +439,11 @@ def list_my_endorsement_status(
     result = []
     for d in documents:
         del_objs = []
-        endorsement_data = d.endorsement_data or {}
         for ed_id in (d.endorsing_delegations or []):
             del_obj = db.query(Delegation).filter(Delegation.id == int(ed_id)).first()
-            edata = endorsement_data.get(str(int(ed_id)), {})
             del_objs.append({
                 "delegation_id": int(ed_id),
                 "delegation_name": del_obj.name if del_obj else f"ID:{ed_id}",
-                "status": edata.get("status", "pending"),
-                "note": edata.get("note", ""),
-                "updated_at": edata.get("updated_at", "")
             })
         result.append({
             "id": d.id,
@@ -640,11 +660,23 @@ def download_file(
         # 代表的委员会归属来自代表团，而非 User.committee_id
         delegation = db.query(Delegation).filter(Delegation.id == user.delegation_id).first() if user.delegation_id else None
         my_committee = delegation.committee_id if delegation else user.committee_id
-        # 已撤回的文件不允许下载（即使拿到了文件名）
-        if filename in recalled_file_paths(db, my_committee):
-            raise HTTPException(status_code=403, detail="该文件已被撤回")
         docs = db.query(Document).filter(Document.file_path == filename).all()
         updates = db.query(Update).filter(Update.file_path == filename).all()
+        # 阁首对「本代表团在联署名单里」的文件始终可下载：
+        # 撤回只影响代表端可见性，不应妨碍阁首查看内容来完成联署审批。
+        is_endorsement_leader = bool(user.is_leader and user.delegation_id and my_committee) and any(
+            d.committee_id == my_committee
+            and any(int(x) == user.delegation_id for x in (d.endorsing_delegations or []))
+            for d in docs
+        )
+        # 本代表团自己提交的文件同样始终可下载：代表应能回顾自己的历史提交
+        is_own_submission = bool(user.delegation_id) and any(
+            d.delegation_id == user.delegation_id for d in docs
+        )
+        # 已撤回的文件不允许下载（即使拿到了文件名）；
+        # 阁首的联署文件、以及本代表团自己的提交除外
+        if not (is_endorsement_leader or is_own_submission) and filename in recalled_file_paths(db, my_committee):
+            raise HTTPException(status_code=403, detail="该文件已被撤回")
         # 已入库文件按委员会隔离；未入库临时上传放行（UUID 不可猜测）
         if docs or updates:
             allowed = any(d.committee_id == my_committee for d in docs) or any(

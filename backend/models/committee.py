@@ -21,6 +21,9 @@ class Committee(Base):
     logo_icon = Column(String(16), nullable=True)
     logo_image = Column(String(255), nullable=True)
     display_title = Column(String(100), nullable=True)
+    # 主发言名单的单位时长（秒）。主发言名单不依附动议，拿不到动议里的
+    # unit_duration，因此时长按会场单独保存，可在计时器抬头栏直接调整。
+    main_unit_duration = Column(Integer, default=60)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # 关系

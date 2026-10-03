@@ -9,6 +9,8 @@ const listeners = new Map()
 const isConnected = ref(false)
 // 当前 socket 对应的用户 id，用于识别「登出后换号登录」需要重建连接
 let connectedUserId = null
+// 强制刷新只响应一次，避免重复广播时叠加多个 reload 定时器
+let reloadScheduled = false
 
 /**
  * WebSocket 连接管理 composable
@@ -76,6 +78,19 @@ export function useWebSocket() {
               type: isApproved ? 'success' : 'warning',
               duration: 0
             })
+          }
+
+          // 强制刷新 — 管理员在前端发布新版本后触发；先提示再刷新，
+          // 留出几秒让人知道发生了什么（正在填写的内容会丢失）
+          if (data.type === 'force_reload' && !reloadScheduled) {
+            reloadScheduled = true
+            ElNotification({
+              title: '系统已更新',
+              message: '页面将在 3 秒后自动刷新',
+              type: 'warning',
+              duration: 3000
+            })
+            setTimeout(() => window.location.reload(), 3000)
           }
         } catch (e) {
           // 忽略非 JSON 消息

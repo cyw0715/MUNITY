@@ -68,9 +68,6 @@
             <div class="file-endorsements">
               <div v-for="e in file.endorsements" :key="e.delegation_id" class="endorser-row">
                 <span class="endorser-name">{{ e.delegation_name }}</span>
-                <el-tag v-if="e.status === 'approved'" type="success" size="small" effect="plain">通过</el-tag>
-                <el-tag v-else-if="e.status === 'rejected'" type="danger" size="small" effect="plain">拒绝{{ e.note ? '：' + e.note : '' }}</el-tag>
-                <el-tag v-else type="warning" size="small" effect="plain">待审批</el-tag>
               </div>
             </div>
           </div>

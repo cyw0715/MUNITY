@@ -24,6 +24,13 @@ export const useMeetingStore = defineStore('meeting', () => {
   const speakersList = ref([])
   const currentSpeaker = ref(null)
 
+  // 主发言名单：本会场启用该功能、且当前没有活跃动议时，
+  // speakersList 装载的是主发言名单。它只跑单位时长计时（没有总时长），
+  // 时长按会场保存，可在计时器抬头栏直接调整。
+  const mainSpeakersEnabled = ref(false)
+  const mainUnitDuration = ref(60)
+  const isMainSpeakerMode = computed(() => mainSpeakersEnabled.value && !activeMotion.value)
+
   // 计时器（由服务端状态驱动）
   const timerRunning = ref(false)
   const unitRemaining = ref(0)
@@ -239,8 +246,9 @@ export const useMeetingStore = defineStore('meeting', () => {
           await loadSpeakers()
         } else {
           activeMotion.value = null
-          speakersList.value = []
           currentSpeaker.value = null
+          // 没有活跃动议时显示主发言名单（未启用该功能时这里会置空）
+          await loadMainSpeakers()
         }
         delegations.value = delRes.data
       } catch (e) {} 
@@ -259,6 +267,55 @@ export const useMeetingStore = defineStore('meeting', () => {
       speakersList.value = data
       currentSpeaker.value = data.find(s => s.has_spoken === 0) || null
     } catch (e) {}
+  }
+
+  /** 加载主发言名单；接口 403 表示本会场未启用该功能 */
+  async function loadMainSpeakers() {
+    try {
+      const { data } = await api.get('/api/staff/main-speakers')
+      mainSpeakersEnabled.value = true
+      speakersList.value = data
+      currentSpeaker.value = null
+      await loadMainUnitDuration()
+    } catch (e) {
+      mainSpeakersEnabled.value = false
+      speakersList.value = []
+      currentSpeaker.value = null
+    }
+  }
+
+  async function loadMainUnitDuration() {
+    try {
+      const { data } = await api.get('/api/staff/main-speakers/unit-duration')
+      mainUnitDuration.value = data.unit_duration || 60
+      // 待机状态下表盘要反映设定时长，否则停在残留的 00:00
+      if (isMainSpeakerMode.value && !timerRunning.value && !currentSpeaker.value) {
+        unitRemaining.value = mainUnitDuration.value
+        elapsedSeconds.value = 0
+      }
+    } catch (e) {}
+  }
+
+  /** 调整主发言名单的单位时长（秒）；未在计时时同步表盘 */
+  async function setMainUnitDuration(seconds) {
+    const value = Math.max(5, Math.min(3600, Math.round(Number(seconds) || 60)))
+    mainUnitDuration.value = value
+    try {
+      await api.put('/api/staff/main-speakers/unit-duration', { unit_duration: value })
+    } catch (e) {
+      ElMessage.error(e.response?.data?.detail || '设置时长失败')
+      return
+    }
+    if (isMainSpeakerMode.value && !timerRunning.value) {
+      unitRemaining.value = value
+      elapsedSeconds.value = 0
+    }
+  }
+
+  /** 按当前模式重新拉取名单位：主发言名单 / 动议发言名单 */
+  async function refreshSpeakers() {
+    if (isMainSpeakerMode.value) await loadMainSpeakers()
+    else await loadSpeakers()
   }
 
   async function loadDelegates() {
@@ -292,11 +349,12 @@ export const useMeetingStore = defineStore('meeting', () => {
       stopAllTicks()
       activeMotion.value = null
       currentSpeaker.value = null
-      speakersList.value = []
       unitRemaining.value = 0
       totalRemaining.value = 0
       elapsedSeconds.value = 0
       timerRunning.value = false
+      // 动议结束后自动从（动议的）发言名单切换为主发言名单
+      await loadMainSpeakers()
       return true
     } catch (e) {
       ElMessage.error('操作失败')
@@ -307,6 +365,18 @@ export const useMeetingStore = defineStore('meeting', () => {
   // ============ 发言操作 ============
 
   async function selectSpeaker(speaker) {
+    // 主发言名单：没有动议上下文，计时纯本地，也不写服务端。
+    // 切人时把单位计时刷满一个完整时长。
+    if (isMainSpeakerMode.value) {
+      stopAllTicks()
+      currentSpeaker.value = speaker
+      speechContent.value = ''
+      unitRemaining.value = mainUnitDuration.value
+      elapsedSeconds.value = 0
+      totalRemaining.value = 0
+      return
+    }
+
     if (currentSpeaker.value && speechContent.value) {
       await saveSpeechContent()
     }
@@ -341,6 +411,14 @@ export const useMeetingStore = defineStore('meeting', () => {
 
   async function endSpeaker() {
     stopAllTicks()
+    // 主发言名单：本地结束即可，没有动议发言记录要落库
+    if (isMainSpeakerMode.value) {
+      currentSpeaker.value = null
+      speechContent.value = ''
+      unitRemaining.value = mainUnitDuration.value
+      elapsedSeconds.value = 0
+      return
+    }
     if (currentSpeaker.value) {
       try {
         await api.put(`/api/staff/motions/${activeMotion.value.id}/speakers/${currentSpeaker.value.id}/end?duration=${elapsedSeconds.value}`)
@@ -359,28 +437,46 @@ export const useMeetingStore = defineStore('meeting', () => {
   }
 
   async function addSpeaker(delegationId, delegateId) {
-    if (!activeMotion.value) return
+    const mainMode = isMainSpeakerMode.value
+    if (!mainMode && !activeMotion.value) return
+    const url = mainMode
+      ? '/api/staff/main-speakers'
+      : `/api/staff/motions/${activeMotion.value.id}/speakers`
     try {
-      await api.post(`/api/staff/motions/${activeMotion.value.id}/speakers`, {
-        delegation_id: delegationId,
-        delegate_id: delegateId
-      })
-      await loadSpeakers()
+      await api.post(url, { delegation_id: delegationId, delegate_id: delegateId })
+      await refreshSpeakers()
       return true
     } catch (e) {
-      ElMessage.error('添加失败')
+      ElMessage.error(e.response?.data?.detail || '添加失败')
       return false
     }
   }
 
   async function removeSpeaker(speakerId) {
-    if (!activeMotion.value) return
+    const mainMode = isMainSpeakerMode.value
+    if (!mainMode && !activeMotion.value) return
+    const url = mainMode
+      ? `/api/staff/main-speakers/${speakerId}`
+      : `/api/staff/motions/${activeMotion.value.id}/speakers/${speakerId}`
     try {
-      await api.delete(`/api/staff/motions/${activeMotion.value.id}/speakers/${speakerId}`)
-      await loadSpeakers()
+      await api.delete(url)
+      await refreshSpeakers()
     } catch (e) {
-      ElMessage.error('操作失败')
+      ElMessage.error(e.response?.data?.detail || '操作失败')
     }
+  }
+
+  /** 拖拽排序：按当前模式提交到对应接口 */
+  async function reorderSpeakers() {
+    const ids = speakersList.value.map(s => s.id)
+    const mainMode = isMainSpeakerMode.value
+    if (!ids.length || (!mainMode && !activeMotion.value)) return
+    const url = mainMode
+      ? '/api/staff/main-speakers/reorder'
+      : `/api/staff/motions/${activeMotion.value.id}/speakers/reorder`
+    try {
+      await api.put(url, { speaker_ids: ids })
+    } catch (e) {}
   }
 
   // ============ 议程操作 ============
@@ -414,6 +510,9 @@ export const useMeetingStore = defineStore('meeting', () => {
       case 'speakers_updated':
         loadSpeakers()
         break
+      case 'main_speakers_updated':
+        if (isMainSpeakerMode.value) loadMainSpeakers()
+        break
       case 'agenda_changed':
         currentAgenda.value = data.agenda || null
         break
@@ -439,7 +538,9 @@ export const useMeetingStore = defineStore('meeting', () => {
     startLocalTick, stopLocalTick, pushTimerState,
     createMotion, endMotion,
     selectSpeaker, saveSpeechContent, endSpeaker,
-    addSpeaker, removeSpeaker,
+    addSpeaker, removeSpeaker, reorderSpeakers,
+    mainSpeakersEnabled, isMainSpeakerMode, loadMainSpeakers, refreshSpeakers,
+    mainUnitDuration, loadMainUnitDuration, setMainUnitDuration,
     activateAgenda,
     registerWebSocketListener, unregisterWebSocketListener,
     applyMeetingUpdate,

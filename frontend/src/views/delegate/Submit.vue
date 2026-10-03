@@ -131,7 +131,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="drafter" label="起草人" width="120" show-overflow-tooltip />
-        <el-table-column prop="title" label="标题" min-width="150" show-overflow-tooltip />
+        <el-table-column label="标题" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row._type === 'directive' ? (row.content || '').slice(0, 40) : row.title }}
+          </template>
+        </el-table-column>
         <el-table-column label="密级" width="80">
           <template #default="{ row }">
             <el-tag :type="row.secrecy === 'secret' ? 'danger' : 'success'" size="small">
@@ -140,11 +144,8 @@
           </template>
         </el-table-column>
         <el-table-column label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag v-if="row._type === 'directive'" :type="statusColors[row.status] || 'info'" size="small">
-              {{ statusLabels[row.status] || row.status }}
-            </el-tag>
-            <el-tag v-else type="info" size="small">已提交</el-tag>
+          <template #default>
+            <el-tag type="info" size="small">已提交</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="时间" width="180">
@@ -154,7 +155,7 @@
         </el-table-column>
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
-            <el-button v-if="row._type === 'document'" type="primary" link size="small" @click="showDocumentDetail(row)">
+            <el-button type="primary" link size="small" @click="showDocumentDetail(row)">
               查看
             </el-button>
             <el-button v-if="row.file_path" type="success" link size="small" @click="downloadFile(row.file_path)">
@@ -167,11 +168,11 @@
     </el-card>
 
     <!-- 文件详情对话框 -->
-    <el-dialog v-model="detailVisible" :title="detailDoc?.title || '文件详情'" width="600px">
+    <el-dialog v-model="detailVisible" :title="detailTitle" width="600px">
       <div v-if="detailDoc" class="doc-detail">
         <div class="detail-item">
           <span class="detail-label">类型：</span>
-          <el-tag>{{ docTypeLabel(detailDoc.doc_type) }}</el-tag>
+          <el-tag>{{ detailDoc._type === 'directive' ? '指令' : docTypeLabel(detailDoc.doc_type) }}</el-tag>
         </div>
         <div class="detail-item">
           <span class="detail-label">起草人：</span>
@@ -227,21 +228,11 @@ if (props.mode === 'document') activeTab.value = 'document'
 const recordFilter = ref(isSingleMode.value ? props.mode : 'all')
 const detailVisible = ref(false)
 const detailDoc = ref(null)
+// 指令没有 title 字段：用「指令详情」兜底，否则弹窗标题会显示成「文件详情」
+const detailTitle = computed(() =>
+  detailDoc.value?.title || (detailDoc.value?._type === 'directive' ? '指令详情' : '文件详情')
+)
 const selectedFile = ref(null)
-
-const statusLabels = {
-  unread: '未读',
-  no_simulate: '不推演',
-  pending_simulate: '未推演',
-  simulated: '已推演'
-}
-
-const statusColors = {
-  unread: 'info',
-  no_simulate: 'danger',
-  pending_simulate: 'warning',
-  simulated: 'success'
-}
 
 const docTypeLabels = {
   declaration: '声明',

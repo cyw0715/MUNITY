@@ -89,6 +89,7 @@ FEATURE_LABELS = {
     "directives": "指令管理",
     "updates": "局势更新",
     "timeline": "时间线",
+    "main_speakers": "主发言名单",
     "directive_points": "指令·行政点数",
 }
 

@@ -34,6 +34,21 @@
         <div class="timer-card">
           <div class="timer-header">
             <h3>发言计时器</h3>
+            <!-- 主发言名单：不启用总时长，单位时长在这里直接调整 -->
+            <div v-if="store.isMainSpeakerMode" class="unit-duration-control">
+              <span class="dur-label">单位时长</span>
+              <el-input-number
+                v-model="unitDurationInput"
+                :min="5"
+                :max="3600"
+                :step="5"
+                size="small"
+                controls-position="right"
+                style="width: 120px"
+                @change="handleUnitDurationChange"
+              />
+              <span class="dur-unit">秒</span>
+            </div>
             <span v-if="store.isSpeaking" class="live-badge">● LIVE</span>
           </div>
           <!-- 动议主题 -->
@@ -45,7 +60,8 @@
           <div class="timer-content">
             <!-- 当前发言者 -->
             <div v-if="store.currentSpeaker" class="speaker-display animate-slide-up">
-              <div class="total-slot">
+              <!-- 主发言名单只有单位时长，没有总时长 -->
+              <div v-if="!store.isMainSpeakerMode" class="total-slot">
                 <span class="total-label">总剩余</span>
                 <span class="total-time">{{ store.formattedTotalTime }}</span>
               </div>
@@ -104,6 +120,23 @@
               <p class="no-speaker-hint">发言名单为空，计时器将在无发言者状态下倒数总时长</p>
             </div>
 
+            <!-- 主发言名单待机：尚未选中代表，表盘显示设定好的单位时长 -->
+            <div v-else-if="store.isMainSpeakerMode" class="no-speaker">
+              <div class="total-only">
+                <span class="total-label">单位时长</span>
+                <div class="big-timer">{{ store.formattedUnitTime }}</div>
+              </div>
+              <div class="timer-controls" style="margin-top: 16px;">
+                <button v-if="!store.timerRunning" class="ctrl-btn btn-start" @click="store.startLocalTick()">
+                  <el-icon><VideoPlay /></el-icon> 开始计时
+                </button>
+                <button v-else class="ctrl-btn btn-pause" @click="store.stopLocalTick()">
+                  <el-icon><VideoPause /></el-icon> 暂停
+                </button>
+              </div>
+              <p class="no-speaker-hint">点击右列主发言名单中的代表开始计时</p>
+            </div>
+
             <!-- 无动议 -->
             <div v-else class="no-motion">
               <div class="no-motion-icon">
@@ -120,8 +153,8 @@
       <el-col :span="10">
         <div class="speakers-card">
           <div class="speakers-header">
-            <h3>发言名单</h3>
-            <el-button v-if="store.activeMotion" type="primary" size="small" @click="showAddSpeakerDialog">
+            <h3>{{ store.isMainSpeakerMode ? '主发言名单' : '发言名单' }}</h3>
+            <el-button v-if="store.activeMotion || store.isMainSpeakerMode" type="primary" size="small" @click="showAddSpeakerDialog">
               <el-icon><Plus /></el-icon> 添加
             </el-button>
           </div>
@@ -139,7 +172,7 @@
                 <div
                   class="speaker-row"
                   :class="{
-                    active: index === 0 && !speaker.has_spoken,
+                    active: index === 0 && !speaker.has_spoken && !store.isMainSpeakerMode,
                     spoken: speaker.has_spoken,
                     current: store.currentSpeaker?.id === speaker.id && store.timerRunning
                   }"
@@ -155,7 +188,7 @@
                   <span v-if="speaker.has_spoken" class="spk-status">
                     <el-tag size="small" type="info" round>{{ speaker.duration }}s</el-tag>
                   </span>
-                  <span v-else-if="index === 0" class="spk-status">
+                  <span v-else-if="index === 0 && !store.isMainSpeakerMode" class="spk-status">
                     <span class="active-badge">当前</span>
                   </span>
                   <button class="spk-remove" @click.stop="store.removeSpeaker(speaker.id)" title="移除">
@@ -217,20 +250,18 @@
             <el-option v-for="m in filteredProposers" :key="m.id" :label="m.seat + (m.is_leader ? ' (阁首)' : '')" :value="m.id" />
           </el-select>
         </el-form-item>
-        <template v-if="motionTypeNeedsUnitDuration">
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="单位时长（秒）">
-                <el-input-number v-model="motionForm.unit_duration" :min="10" :step="10" :max="600" controls-position="right" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="总时长（秒）">
-                <el-input-number v-model="motionForm.total_duration" :min="30" :step="30" :max="7200" controls-position="right" style="width: 100%" />
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </template>
+        <el-row v-if="motionTypeNeedsUnitDuration || motionTypeNeedsTotalDuration" :gutter="16">
+          <el-col v-if="motionTypeNeedsUnitDuration" :span="motionTypeNeedsTotalDuration ? 12 : 24">
+            <el-form-item label="单位时长（秒）">
+              <el-input-number v-model="motionForm.unit_duration" :min="10" :step="10" :max="600" controls-position="right" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col v-if="motionTypeNeedsTotalDuration" :span="motionTypeNeedsUnitDuration ? 12 : 24">
+            <el-form-item label="总时长（秒）">
+              <el-input-number v-model="motionForm.total_duration" :min="30" :step="30" :max="7200" controls-position="right" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-alert v-else type="info" :closable="false" show-icon style="margin-top: 8px">
           <template #default>此动议类型不包含时长设置</template>
         </el-alert>
@@ -306,13 +337,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { VideoPlay, VideoPause, CircleClose, Plus, Close, Edit, Microphone, Operation } from '@element-plus/icons-vue'
 import { useMeetingStore } from '../../stores/meeting'
 import api from '../../api'
 import draggable from 'vuedraggable'
-import { resolveMotionTypes, splitMotionTypeOptions } from '../../constants/motionTypes'
+import { resolveMotionTypes, splitMotionTypeOptions, BUILTIN_TYPES } from '../../constants/motionTypes'
 
 const store = useMeetingStore()
 const motionTypesConfig = ref([])  // 本委员会启用的全部动议类型（内置+自定义）
@@ -340,6 +371,10 @@ function findTypeConfig(type) {
     if (fromDb) {
       return { ...fromDb, need_speakers_list: fromDb.need_speakers_list ?? true, need_unit_duration: fromDb.need_unit_duration ?? true, need_total_duration: fromDb.need_total_duration ?? true }
     }
+    // 库里没有该项时按内置定义兜底：不能一律返回 true，
+    // 否则自由磋商（单位时长 false、总时长 true）会被当成两者都要
+    const builtin = BUILTIN_TYPES.find(t => t.key === type)
+    if (builtin) return { ...builtin }
     return { need_speakers_list: true, need_unit_duration: true, need_total_duration: true }
   }
   return motionTypesConfig.value.find(m => m.name === type)
@@ -350,17 +385,21 @@ const currentMotionTypeConfig = computed(() => {
   return findTypeConfig(motionForm.value.type)
 })
 
-// 根据类型配置动态显示/隐藏时长字段
+// 根据类型配置动态显示/隐藏时长字段（两个开关各自独立）
 const motionTypeNeedsUnitDuration = computed(() => {
   return currentMotionTypeConfig.value?.need_unit_duration ?? true
 })
 
+const motionTypeNeedsTotalDuration = computed(() => {
+  return currentMotionTypeConfig.value?.need_total_duration ?? true
+})
+
 function onMotionTypeChange(newType) {
   const config = findTypeConfig(newType)
-  if (config && !BUILTIN_KEYS.includes(newType)) {
-    if (config.default_unit_duration) motionForm.value.unit_duration = config.default_unit_duration
-    if (config.default_total_duration) motionForm.value.total_duration = config.default_total_duration
-  }
+  if (!config) return
+  // 切换类型时带出该类型自己的默认时长（内置类型同样适用）
+  if (config.default_unit_duration) motionForm.value.unit_duration = config.default_unit_duration
+  if (config.default_total_duration) motionForm.value.total_duration = config.default_total_duration
 }
 
 // 对话框状态
@@ -378,6 +417,14 @@ const motionProposerDelegation = ref(null)
 const motionProposerDelegate = ref(null)
 const selectedDelegationId = ref(null)
 const selectedDelegateId = ref(null)
+
+// 主发言名单的单位时长（抬头栏右侧可调），与 store 保持同步
+const unitDurationInput = ref(60)
+watch(() => store.mainUnitDuration, (v) => { unitDurationInput.value = v }, { immediate: true })
+
+async function handleUnitDurationChange(val) {
+  await store.setMainUnitDuration(val)
+}
 
 const motionTypeLabels = { moderated_caucus: '有主持核心磋商', unmoderated_caucus: '自由辩论', free_caucus: '自由磋商', speakers_list: '轮席发言' }
 
@@ -458,11 +505,7 @@ async function handleCreateAgenda() {
 }
 
 async function handleReorder() {
-  const ids = store.speakersList.map(s => s.id)
-  if (!store.activeMotion || ids.length === 0) return
-  try {
-    await api.put(`/api/staff/motions/${store.activeMotion.id}/speakers/reorder`, { speaker_ids: ids })
-  } catch (e) {}
+  await store.reorderSpeakers()
 }
 
 // 动议操作
@@ -485,8 +528,13 @@ async function showMotionDialog() {
 
 async function handleCreateMotion() {
   motionLoading.value = true
+  // 该类型用不到的时长字段要归零，否则会把表单里的默认值（如单位时长 60）
+  // 一并存进动议——自由磋商这类「只有总时长」的类型不该带单位时长。
+  const payload = { ...motionForm.value }
+  if (!motionTypeNeedsUnitDuration.value) payload.unit_duration = 0
+  if (!motionTypeNeedsTotalDuration.value) payload.total_duration = 0
   const ok = await store.createMotion({
-    ...motionForm.value,
+    ...payload,
     proposer_delegation_id: motionProposerDelegation.value,
     proposer_delegate_id: motionProposerDelegate.value
   })
@@ -580,6 +628,13 @@ onUnmounted(() => {
 }
 .timer-header h3 { font-size: 16px; font-weight: 600; color: #0f172a; margin: 0; }
 .live-badge { font-size: 11px; color: #ef4444; font-weight: 700; animation: pulse 1.5s infinite; }
+
+/* 主发言名单：抬头栏右侧的单位时长调整 */
+.unit-duration-control {
+  display: flex; align-items: center; gap: 6px; margin-left: auto; margin-right: 12px;
+}
+.unit-duration-control .dur-label,
+.unit-duration-control .dur-unit { font-size: 12px; color: #64748b; }
 
 .timer-motion-topic {
   display: flex; align-items: center; gap: 8px;

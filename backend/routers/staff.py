@@ -12,7 +12,7 @@ from models.user import User
 from models.committee import Committee
 from models.delegation import Delegation
 from models.agenda import AgendaItem
-from models.motion import Motion, SpeakerEntry
+from models.motion import Motion, SpeakerEntry, MainSpeaker
 from models.roll_call import RollCall
 from models.speech_record import SpeechRecord
 from models.directive import Directive
@@ -208,6 +208,36 @@ def update_delegate_seat(
     delegate.seat = data.seat
     db.commit()
     return {"message": "修改成功"}
+
+
+class PasswordReset(BaseModel):
+    password: str
+
+
+@router.put("/delegates/{delegate_id}/password")
+def reset_delegate_password(
+    delegate_id: int,
+    data: PasswordReset,
+    current_user: User = Depends(require_role("staff")),
+    db: Session = Depends(get_db)
+):
+    """覆写代表密码（代表忘记密码或需要学团代为设置时使用）"""
+    committee_id = get_staff_committee(current_user)
+    delegate = db.query(User).filter(User.id == delegate_id, User.role == "delegate").first()
+    if not delegate:
+        raise HTTPException(status_code=404, detail="代表不存在")
+    # 验证代表属于当前委员会
+    if delegate.delegation_id:
+        delegation = db.query(Delegation).filter(
+            Delegation.id == delegate.delegation_id,
+            Delegation.committee_id == committee_id
+        ).first()
+        if not delegation:
+            raise HTTPException(status_code=403, detail="无权操作此代表")
+    validate_password_strength(data.password)
+    delegate.password_hash = hash_password(data.password)
+    db.commit()
+    return {"message": "密码已重置"}
 
 
 @router.delete("/delegates/{delegate_id}")
@@ -1285,6 +1315,183 @@ def get_speaker_detail(
         "duration": speaker.duration,
         "content": speaker.content
     }
+
+
+# ==================== 主发言名单 ====================
+#
+# 主发言名单独立于动议存在（每个会场一份），动议结束后显示的就是它；
+# 新建动议后会议页切到该动议自己的发言名单，主发言名单保持不动。
+# 动议进行中禁止改动主发言名单——它只在没有活跃动议时才可编辑。
+
+class MainSpeakerAdd(BaseModel):
+    delegation_id: int
+    delegate_id: Optional[int] = None
+
+
+def _main_speaker_dict(db: Session, s: MainSpeaker) -> dict:
+    delegation = db.query(Delegation).filter(Delegation.id == s.delegation_id).first()
+    delegate = db.query(User).filter(User.id == s.delegate_id).first() if s.delegate_id else None
+    return {
+        "id": s.id,
+        "committee_id": s.committee_id,
+        "delegation_id": s.delegation_id,
+        "delegation_name": delegation.name if delegation else "未知",
+        "delegate_id": s.delegate_id,
+        "delegate_name": delegate.username if delegate else None,
+        "delegate_seat": delegate.seat if delegate else None,
+        "order": s.order,
+        # 前端复用发言名单的行渲染，补齐它用到的字段
+        "has_spoken": 0,
+        "duration": 0,
+        "is_main": True,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+def _ensure_no_active_motion(db: Session, committee_id: int) -> None:
+    active = db.query(Motion).filter(
+        Motion.committee_id == committee_id,
+        Motion.status == "active"
+    ).first()
+    if active:
+        raise HTTPException(status_code=403, detail="动议进行中，无法修改主发言名单")
+
+
+async def _broadcast_main_speakers(committee_id: int, action: str) -> None:
+    try:
+        from services.websocket_manager import ws_manager
+        await ws_manager.broadcast_committee(committee_id, {
+            "type": "main_speakers_updated",
+            "action": action
+        })
+    except Exception:
+        pass
+
+
+@router.get("/main-speakers")
+def list_main_speakers(
+    current_user: User = Depends(require_feature("main_speakers", "staff")),
+    db: Session = Depends(get_db)
+):
+    """获取主发言名单"""
+    committee_id = get_staff_committee(current_user)
+    rows = db.query(MainSpeaker).filter(
+        MainSpeaker.committee_id == committee_id
+    ).order_by(MainSpeaker.order).all()
+    return [_main_speaker_dict(db, s) for s in rows]
+
+
+@router.post("/main-speakers")
+async def add_main_speaker(
+    data: MainSpeakerAdd,
+    current_user: User = Depends(require_feature("main_speakers", "staff")),
+    db: Session = Depends(get_db)
+):
+    """添加发言者到主发言名单（与动议发言名单同样的增删逻辑）"""
+    committee_id = get_staff_committee(current_user)
+    _ensure_no_active_motion(db, committee_id)
+
+    delegation = db.query(Delegation).filter(
+        Delegation.id == data.delegation_id,
+        Delegation.committee_id == committee_id
+    ).first()
+    if not delegation:
+        raise HTTPException(status_code=404, detail="代表团不存在")
+
+    max_order = db.query(MainSpeaker).filter(MainSpeaker.committee_id == committee_id).count()
+    entry = MainSpeaker(
+        committee_id=committee_id,
+        delegation_id=data.delegation_id,
+        delegate_id=data.delegate_id,
+        order=max_order + 1
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    await _broadcast_main_speakers(committee_id, "created")
+    return _main_speaker_dict(db, entry)
+
+
+@router.delete("/main-speakers/{speaker_id}")
+async def remove_main_speaker(
+    speaker_id: int,
+    current_user: User = Depends(require_feature("main_speakers", "staff")),
+    db: Session = Depends(get_db)
+):
+    """从主发言名单移除"""
+    committee_id = get_staff_committee(current_user)
+    _ensure_no_active_motion(db, committee_id)
+
+    entry = db.query(MainSpeaker).filter(
+        MainSpeaker.id == speaker_id,
+        MainSpeaker.committee_id == committee_id
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="发言者不存在")
+    db.delete(entry)
+    db.commit()
+    await _broadcast_main_speakers(committee_id, "removed")
+    return {"message": "移除成功"}
+
+
+@router.put("/main-speakers/reorder")
+async def reorder_main_speakers(
+    data: dict,
+    current_user: User = Depends(require_feature("main_speakers", "staff")),
+    db: Session = Depends(get_db)
+):
+    """重排序主发言名单：接收 speaker_ids 有序数组"""
+    committee_id = get_staff_committee(current_user)
+    _ensure_no_active_motion(db, committee_id)
+
+    for idx, sid in enumerate(data.get("speaker_ids", [])):
+        db.query(MainSpeaker).filter(
+            MainSpeaker.id == sid,
+            MainSpeaker.committee_id == committee_id
+        ).update({"order": idx + 1})
+    db.commit()
+    await _broadcast_main_speakers(committee_id, "reordered")
+    return {"message": "排序成功"}
+
+
+class MainUnitDuration(BaseModel):
+    unit_duration: int
+
+
+@router.get("/main-speakers/unit-duration")
+def get_main_unit_duration(
+    current_user: User = Depends(require_feature("main_speakers", "staff")),
+    db: Session = Depends(get_db)
+):
+    """主发言名单的单位时长（秒）"""
+    committee_id = get_staff_committee(current_user)
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
+    value = committee.main_unit_duration if committee and committee.main_unit_duration else 60
+    return {"unit_duration": value}
+
+
+@router.put("/main-speakers/unit-duration")
+async def set_main_unit_duration(
+    data: MainUnitDuration,
+    current_user: User = Depends(require_feature("main_speakers", "staff")),
+    db: Session = Depends(get_db)
+):
+    """调整主发言名单的单位时长（5–3600 秒）。
+
+    与名单本身一样，动议进行中不允许修改。
+    """
+    committee_id = get_staff_committee(current_user)
+    _ensure_no_active_motion(db, committee_id)
+
+    committee = db.query(Committee).filter(Committee.id == committee_id).first()
+    if not committee:
+        raise HTTPException(status_code=404, detail="会场不存在")
+
+    value = max(5, min(3600, int(data.unit_duration or 60)))
+    committee.main_unit_duration = value
+    db.commit()
+    await _broadcast_main_speakers(committee_id, "duration_changed")
+    return {"message": "已更新", "unit_duration": value}
 
 
 # ==================== 局势更新 ====================

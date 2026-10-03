@@ -402,3 +402,19 @@ def get_me(current_user: User = Depends(require_role("admin"))):
         "username": current_user.username,
         "role": current_user.role
     }
+
+
+# ==================== 运维操作 ====================
+
+@router.post("/force-reload")
+async def force_reload(current_user: User = Depends(require_role("admin"))):
+    """通知所有在线客户端重新加载页面。
+
+    用于前端发布新版本后统一生效。只对 WebSocket 已连接的在线用户有效，
+    不在线的用户下次打开页面自然就是新代码。
+    """
+    from services.websocket_manager import ws_manager
+
+    online_users = len(ws_manager.active_connections)
+    await ws_manager.broadcast({"type": "force_reload"})
+    return {"message": f"已通知 {online_users} 位在线用户刷新页面", "online_users": online_users}

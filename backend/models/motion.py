@@ -44,3 +44,22 @@ class SpeakerEntry(Base):
     motion = relationship("Motion", back_populates="speakers")
     delegation = relationship("Delegation")
     delegate = relationship("User")
+
+
+class MainSpeaker(Base):
+    """主发言名单：不依附于动议，每个会场一份。
+
+    与动议发言名单（SpeakerEntry）结构相近，增删/排序逻辑一致；
+    但不参与计时与发言记录——没有动议就没有单位时长。
+    """
+    __tablename__ = "main_speakers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    committee_id = Column(Integer, ForeignKey("committees.id"), nullable=False)
+    delegation_id = Column(Integer, ForeignKey("delegations.id"), nullable=False)
+    delegate_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    delegation = relationship("Delegation")
+    delegate = relationship("User")
