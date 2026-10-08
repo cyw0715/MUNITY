@@ -85,9 +85,11 @@ class AutoSaver:
                 })
 
             # 保存用户
+            # 不写 password_hash：自动保存文件长期留在磁盘上，一旦泄露就等于交出
+            # 全部密码哈希（可离线爆破）。密码本身由数据库负责，恢复后另行设置。
             for u in db.query(User).all():
                 state["users"].append({
-                    "id": u.id, "username": u.username, "password_hash": u.password_hash,
+                    "id": u.id, "username": u.username,
                     "role": u.role, "seat": u.seat, "created_by": u.created_by, "committee_id": u.committee_id,
                     "delegation_id": u.delegation_id, "is_leader": u.is_leader
                 })
@@ -224,9 +226,17 @@ class AutoSaver:
                     db.add(Delegation(id=d["id"], name=d["name"], committee_id=d["committee_id"]))
 
                 # 恢复用户
+                # password_hash 已不再随状态保存；为兼容旧存档，旧文件里仍带该字段时沿用，
+                # 否则写入一个随机生成的哈希——任何人都无法用它登录，需重新设置密码。
+                fallback_hash = None
                 for u in state.get("users", []):
+                    if not u.get("password_hash") and fallback_hash is None:
+                        import secrets
+                        from services import hash_password
+                        fallback_hash = hash_password(secrets.token_urlsafe(32))
                     db.add(User(
-                        id=u["id"], username=u["username"], password_hash=u["password_hash"],
+                        id=u["id"], username=u["username"],
+                        password_hash=u.get("password_hash") or fallback_hash,
                         role=u["role"], seat=u.get("seat"), created_by=u.get("created_by"),
                         committee_id=u.get("committee_id"), delegation_id=u.get("delegation_id"),
                         is_leader=u.get("is_leader", False)

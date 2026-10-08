@@ -38,6 +38,38 @@ app.add_middleware(
 )
 
 
+MAX_JSON_BODY_BYTES = 1 * 1024 * 1024  # JSON 请求体上限（1MB）
+
+
+@app.middleware("http")
+async def limit_json_body(request: Request, call_next):
+    """限制 JSON 请求体大小。
+
+    文件上传走 multipart（另有 20MB 上限），这里只拦 application/json，
+    否则一个超大 JSON 就能把内存吃满。
+    """
+    if request.method in ("POST", "PUT", "PATCH"):
+        ctype = (request.headers.get("content-type") or "").lower()
+        if ctype.startswith("application/json"):
+            try:
+                length = int(request.headers.get("content-length") or 0)
+            except ValueError:
+                length = 0
+            if length > MAX_JSON_BODY_BYTES:
+                # 先流式丢弃请求体再回 413：不读就直接响应，客户端会看到连接重置
+                # 而不是这个错误码。用 stream() 逐块丢弃，避免把大 body 读进内存。
+                try:
+                    async for _ in request.stream():
+                        pass
+                except Exception:
+                    pass
+                return JSONResponse(
+                    {"detail": f"请求体过大（上限 {MAX_JSON_BODY_BYTES // 1024 // 1024}MB）"},
+                    status_code=413,
+                )
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)

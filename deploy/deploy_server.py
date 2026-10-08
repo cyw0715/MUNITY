@@ -58,7 +58,12 @@ python-multipart==0.0.9
 write_file(os.path.join(backend_dir, "config.py"), '''import os
 
 DATABASE_URL = "sqlite:///./mun_os.db"
-SECRET_KEY = os.getenv("SECRET_KEY", "munity-os-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "必须设置 SECRET_KEY 环境变量——硬编码默认密钥会让任何人都能伪造 JWT。"
+        "生成方式：python3 -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480
 DEFAULT_ADMIN_USERNAME = "admin"
@@ -283,7 +288,8 @@ def require_role(*roles):
 ''')
 
 # main.py
-write_file(os.path.join(backend_dir, "main.py"), '''from fastapi import FastAPI
+write_file(os.path.join(backend_dir, "main.py"), '''import os
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base, SessionLocal
 from models import User
@@ -292,7 +298,11 @@ from config import DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_PASSWORD
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="MUNITY OS", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+# 跨域来源：由 CORS_ORIGINS 环境变量显式列出（逗号分隔）。
+# 不能用 ["*"]——配合 allow_credentials 等于放行任意站点携带凭据访问。
+_cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=_cors_origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 @app.on_event("startup")
 def on_startup():

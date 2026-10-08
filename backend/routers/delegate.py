@@ -634,17 +634,16 @@ async def upload_document(
 @router.get("/download/{filename}")
 def download_file(
     filename: str,
-    token: str = None,
     db: Session = Depends(get_db),
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
 ):
-    """下载文件（优先 Authorization 头，兼容 query token；校验归属）"""
+    """下载文件（仅接受 Authorization 头，避免 token 进入 URL / 访问日志）"""
     from utils.security import safe_join, original_display_name
     from services import get_user_from_token
     from models.document import Document
     from models.update import Update
 
-    raw_token = credentials.credentials if credentials else token
+    raw_token = credentials.credentials if credentials else None
     if not raw_token:
         raise HTTPException(status_code=401, detail="缺少认证凭据")
 

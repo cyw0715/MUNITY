@@ -28,6 +28,7 @@ def validate_password_strength(password: str) -> None:
     if password.lower() in {
         "admin123", "123456", "12345678", "password", "qwerty",
         "abc123", "111111", "123123", "iloveyou", "admin888",
+        "123", "1234", "12345", "000000", "654321",
     }:
         raise HTTPException(status_code=400, detail="密码过于常见，请更换")
 

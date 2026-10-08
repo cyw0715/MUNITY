@@ -144,6 +144,20 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int):
     from services import get_user_from_token, decode_token
     from database import SessionLocal
 
+    # 来源校验：WebSocket 不受同源策略保护，恶意网页可在用户已登录时发起连接
+    # 并接收实时推送。浏览器一定会带 Origin，因此非同源一律拒绝；
+    # 非浏览器客户端（无 Origin）放行，仍由下面的 JWT 把关。
+    origin = websocket.headers.get("origin")
+    if origin:
+        from urllib.parse import urlparse
+        from config import CORS_ORIGINS
+        host = (websocket.headers.get("host") or "").lower()
+        same_origin = bool(host) and urlparse(origin).netloc.lower() == host
+        if not same_origin and origin not in CORS_ORIGINS:
+            logger.warning("WebSocket 拒绝跨站连接: origin=%s host=%s", origin, host)
+            await websocket.close(code=4403)
+            return
+
     token = (
         websocket.query_params.get("access_token")
         or websocket.query_params.get("token")
