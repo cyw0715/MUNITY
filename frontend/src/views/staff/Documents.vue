@@ -68,7 +68,11 @@
         </el-table-column>
         <el-table-column label="密级" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.doc_type === 'agreement'" :type="row.secrecy === 'secret' ? 'danger' : 'success'" size="small">
+            <el-tag
+              v-if="docCfg(row.doc_type)?.need_secrecy"
+              :type="row.secrecy === 'secret' ? 'danger' : 'success'"
+              size="small"
+            >
               {{ row.secrecy === 'secret' ? '秘密' : '公开' }}
             </el-tag>
             <span v-else style="color: #999">-</span>
@@ -91,7 +95,7 @@
             <template v-else>
               <template v-if="!row.published">
                 <el-tooltip
-                  v-if="row.doc_type === 'agreement' && row.secrecy === 'secret'"
+                  v-if="docCfg(row.doc_type)?.endorsement === 'required' && row.secrecy === 'secret'"
                   content="秘密协定不能发布"
                   placement="top"
                 >
@@ -148,9 +152,7 @@
           <el-tag v-if="detailItem.published" type="success" style="margin-left: 8px">已发布</el-tag>
         </p>
         <p><strong>标题：</strong>{{ detailItem.title }}</p>
-        <template v-if="detailItem.doc_type === 'agreement'">
-          <p><strong>密级：</strong>{{ detailItem.secrecy === 'secret' ? '秘密' : '公开' }}</p>
-        </template>
+        <p v-if="docCfg(detailItem.doc_type)?.need_secrecy"><strong>密级：</strong>{{ detailItem.secrecy === 'secret' ? '秘密' : '公开' }}</p>
         <el-divider />
         <div style="white-space: pre-wrap; background: #f5f7fa; padding: 16px; border-radius: 4px">
           {{ detailItem.content || '无内容' }}
@@ -261,6 +263,7 @@ import { Search } from '@element-plus/icons-vue'
 import api from '../../api'
 import { useWebSocket } from '../../composables/useWebSocket'
 import { displayFileName } from '../../utils/file'
+import { resolveDocumentTypes, findDocType } from '../../constants/documentTypes'
 
 const keyword = ref('')
 const documents = ref([])
@@ -292,6 +295,14 @@ const pollTimer = ref(null)
 
 const docTypeLabels = { declaration: '声明', memorandum: '备忘录', agreement: '协定' }
 
+// 本会场的文件类型配置：密级、联署是按类型配置决定的，不能靠硬编码的类型名
+const documentTypes = ref([])
+
+/** 该文件的类型配置（doc_type 可能是内置 key，也可能是类型名称） */
+function docCfg(type) {
+  return findDocType(documentTypes.value, type)
+}
+
 const availableDelegations = computed(() => {
   return delegations.value.filter(d => !selectedDelegations.value.includes(d.id))
 })
@@ -320,14 +331,16 @@ function removeDelegation(dId) {
 
 async function loadData() {
   try {
-    const [docRes, dRes, delRes] = await Promise.all([
+    const [docRes, dRes, delRes, comRes] = await Promise.all([
       api.get('/api/staff/documents'),
       api.get('/api/staff/delegations'),
-      api.get('/api/staff/delegates')
+      api.get('/api/staff/delegates'),
+      api.get('/api/staff/committee')
     ])
     documents.value = docRes.data
     delegations.value = dRes.data
     allDelegates.value = delRes.data
+    documentTypes.value = resolveDocumentTypes(comRes.data.document_types, comRes.data.document_types_configured)
   } catch (e) {}
 }
 
